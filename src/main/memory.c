@@ -2338,7 +2338,7 @@ char *R_alloc(size_t nelem, int eltsize)
 #endif
 	ATTRIB(s) = R_VStack;
 	R_VStack = s;
-	return (char *) DATAPTR(s);
+	return (char *) STDVEC_DATAPTR(s);
     }
     /* One programmer has relied on this, but it is undocumented! */
     else return NULL;
@@ -2739,7 +2739,7 @@ SEXP allocVector3(SEXPTYPE type, R_xlen_t length, R_allocator_t *allocator)
     }
 
     if (length > R_XLEN_T_MAX)
-	error(_("vector is too large")); /**** put length into message */
+	error(_("cannot allocate vector of length %lld"), (long long)length);
     else if (length < 0 )
 	error(_("negative length vectors are not allowed"));
     /* number of vector cells to allocate */
@@ -4159,6 +4159,9 @@ void *(STDVEC_DATAPTR)(SEXP x)
     CHKZLN(x);
     return STDVEC_DATAPTR(x);
 }
+
+/* nedded for implementing Dataptr ALTREP methods */
+void *DATAPTR_RW(SEXP x) { return DATAPTR(x); }
 
 int *(LOGICAL)(SEXP x) {
     if(TYPEOF(x) != LGLSXP)

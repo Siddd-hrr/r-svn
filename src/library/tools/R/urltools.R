@@ -551,7 +551,12 @@ function(db, remote = TRUE, verbose = FALSE, parallel = FALSE, pool = NULL)
                  (grepl("^https?://cran.r-project.org/web/views/[[:alnum:]]+[.]html$",
                         ul)) ||
                  startsWith(ul, "http://cran.r-project.org") ||
-                 any(startsWith(ul, mirrors)))
+                 any(startsWith(ul, mirrors) &
+                     (sub("/$", "", ul) != mirrors) &
+                     ## Need to allow expanions of \manual:
+                     !startsWith(ul, "https://cloud.r-project.org/bin/windows/base/") &
+                     !startsWith(ul, "https://cloud.r-project.org/doc/manuals/")
+                     ))
         R <- grepl("^http://(www|bugs|journal).r-project.org", ul)
         spaces <- grepl(" ", u)
         c(if(cran) u else "", if(spaces) u else "", if(R) u else "")
@@ -642,6 +647,25 @@ function(db, remote = TRUE, verbose = FALSE, parallel = FALSE, pool = NULL)
 
     ## http/https.
     pos <- which(schemes == "http" | schemes == "https")
+    if(length(pos)) {
+        ## Catch malformedURLs like 'http:/foo/bar' and 'https:///foo/bar'.
+        if(any(ind <- !nzchar(parts[pos, "authority"]))) {
+            len <- sum(ind)
+            msg <- rep.int("Invalid URL: missing authority part", len)
+            bad <- rbind(bad,
+                         .gather(urls[pos[ind]], parents[pos[ind]],
+                                 m = msg))
+            pos <- pos[!ind]
+        }
+        if(any(ind <- grepl("#", parts[pos, "fragment"]))) {
+            len <- sum(ind)
+            msg <- rep.int("Invalid URL: '#' not allowed in fragment", len)
+            bad <- rbind(bad,
+                         .gather(urls[pos[ind]], parents[pos[ind]],
+                                 m = msg))
+            pos <- pos[!ind]
+        }
+    }
     if(length(pos) && remote) {
         urlspos <- urls[pos]
         ## Check DOI URLs via the DOI handle API, as we nowadays do for
@@ -714,6 +738,7 @@ function(db, remote = TRUE, verbose = FALSE, parallel = FALSE, pool = NULL)
                 "^https?://pubs.acs.org/",
                 "^https?://journals.aom.org/",
                 "^https?://journals.sagepub.com/",
+                "^https?://epubs.siam.org/",
                 "^https?://www.pnas.org/")
             false_pos_db_404 <- c(                
                 "^https?://finance.yahoo.com/")

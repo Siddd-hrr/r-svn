@@ -16,6 +16,17 @@
 
   \subsection{NEW FEATURES}{
     \itemize{
+      \item The default \code{AIC} and \code{BIC} methods now check whether
+      the \pkg{methods} namespace is loaded rather than \pkg{stats4}. They
+      still use \code{stats4::logLik} (and \code{stats4::nobs}), but packages
+      no longer need to load \pkg{stats4} explicitly.
+
+      \item \code{confint.default()} now also works on S4 objects, as long as
+      suitable \code{coef()} and \code{vcov()} methods exist.
+
+      \item \code{binomial(identity)} and \code{quasibinomial(identity)} now work
+      without having to quote the argument.
+
       \item \code{str()} now shows more via \code{format()} for external
       pointers.
 
@@ -65,6 +76,71 @@
       \item Credentials for basic HTTP authentication with download method
       \code{"libcurl"} can now be provided in a \file{netrc} file.  The
       path to the file can be specified in \code{options("netrc")}.
+
+      \item \code{tools::deparseLatex()} gains a \code{math} argument,
+      now used by the default \code{bibstyle} to format \code{bibentry()}
+      fields with \samp{$...$} syntax via Rd \verb{\eqn} markup.
+
+      \item \code{gzcon()} can now decompress a concatenation of compressed
+      streams \PR{18887}.
+
+      \item Bibliographic citations and references in Rd files can now
+      be auto-generated from \I{bibentries} in bibliographic databases
+      in R or BibTeX formats.
+      See
+      \code{\link{RShowDoc}("R-exts#Bibliographic-citations-and-references")}
+      for more information.
+
+      \item Arguments to \code{loadNamespace()} which will be ignored
+      because the namespace is already loaded are now noted.
+
+      \item \code{chkDots()}' optional argument \code{allowed} has been
+      implemented thanks to \I{Trevor Davis}' proposal in \PR{18936}.
+
+      \item \code{wilcox.test()} can now perform exact (conditional)
+      inference in case of ties.  Based on contributions by
+      \I{Torsten Hothorn}.
+
+      \item \code{wilcox.test()} can now optionally compute improved
+      asymptotic p-values by including up to 3 correction terms of the
+      \I{Edgeworth} series for the normal approximation.
+
+      \item \code{barplot(.., orderH = *)} for stacked bar plots allows to
+      sort the stacks each according to size.
+
+      \item \code{plot.default()} gets a new switch \code{lim2} to indicate
+      that the default \code{xlim} and \code{ylim} range computations only
+      use \emph{jointly} finite x- and y-values; indirectly suggested in
+      \PR{7986} by \I{Jincai Jiang}.
+
+      \item \file{Rman.css}, the stylesheet for the
+      \command{texi2any}-generated HTML versions of the \R manuals, was
+      improved following joint efforts at the \sQuote{\I{R Dev Days}}
+      of \I{useR! 2024} and \I{RSECon25}.
+
+      \item New system Rd macro \command{\\manual\{\var{name}\}\{\var{node}\}}
+      to refer to a specific section \emph{etc} (possibly empty, for
+      \samp{Top}) of one of the \R manuals (e.g., \samp{R-exts}).
+
+      \item \code{list.files()} now has optional argument \code{fixed}
+      to allow literal pattern matching.  Suggested and implemented
+      by \I{Duncan Murdoch} in \PR{18925}.
+
+      \item \code{substring(txt, i1, i2)}, \code{substr(..)} and their
+      replacement versions now accept \code{i2 = NULL} to mean \dQuote{to
+      the end_of_string}, thus fulfilling \I{Kevin Ushey} (and others')
+      suggestions in \PR{18851}.
+
+      \item The default method for \code{pretty()} gets a new switch \code{bounds} for
+      completeness, corresponding to \code{.pretty()}.  Also, it now
+      catches typos such as \code{eps.corrected = 2}, noted in \PR{18521}
+      by \I{Mikko Korpela}.
+
+      \item Plain-text help now renders Rd \verb{\describe} lists using
+      line breaks after item labels.  Set
+      \code{tools::Rd2txt_options(descStyle=NULL)} to get the old
+      behaviour with a simple space; a \code{"colon"} variant is also
+      available.
     }
   }
 
@@ -91,6 +167,9 @@
       \item Failures in building the documentation for the base packages,
       including from parsing their Rd files, are no longer ignored by
       \command{make docs}.
+
+      \item Building the \R manuals now requires \I{Texinfo} 6.8 or later.
+      % For the new Rman.css. Also features @example <lang> and @displaymath.
     }
   }
 
@@ -102,7 +181,50 @@
 
   \subsection{C-LEVEL FACILITIES}{
     \itemize{
-      \item .
+      \item New functions \code{GEcreateDD()} and \code{GEfreeDD()}
+      for allocating (and initialising) \code{DevDesc} structures.
+      Can be used by external graphics devices.
+      Satisfies \PR{18292}.
+
+      \item New function \code{R_eval_with_gd()} designed to \dQuote{lock} a
+      graphics device during call to \code{eval()} within device drawing
+      routines.
+      External \emph{on-screen} graphics devices should consider using
+      this function to avoid crashes from the device being closed by the
+      user (e.g., a mouse click) during drawing.
+
+      \item Declarations for non-API functions \code{LOGICAL0},
+      \code{INTEGER0}, \code{REAL0}, \code{COMPLEX0}, and \code{RAW0}
+      have been removed from installed header files.
+
+      \item Non-API entry points \code{Rf_acopy_string} and
+      \code{Rf_lazy_duplicate} have been added to those reported
+      by \command{R CMD check}.
+
+      \item \command{R CMD check} \samp{NOTE}s on the use of these
+      non-API entry points have been upgraded to \samp{WARNING}s in
+      preparation for removing declarations and, where possible, hiding
+      these entry points:
+      \code{R_nchar}, \code{VECTOR_PTR}, \code{R_tryWrap},
+      \code{Rf_NonNullStringMatch}, \code{Rf_isValidString}
+      \code{Rf_GetOption}, \code{SET_FRAME}, \code{SET_HASHTAB},
+      \code{SET_ENCLOS}, \code{STDVEC_DATAPTR}, \code{SET_S4_OBJECT},
+      \code{UNSET_S4_OBJECT}, \code{SET_NAMED}, \code{R_lsInternal},
+      \code{Rf_lazy_duplicate}, \code{EXTPTR_PROT}, \code{EXTPTR_PTR},
+      \code{EXTPTR_TAG}, \code{NAMED}, \code{FRAME}, \code{HASHTAB},
+      \code{IS_S4_OBJECT}, \code{BODY}, \code{FORMALS}, \code{CLOENV},
+      \code{ENCLOS}, \code{Rf_isFrame}, \code{OBJECT},
+      \code{SET_TYPEOF}, \code{ENVFLAGS}, \code{SET_ENVFLAGS},
+      \code{SET_FORMALS}, \code{SET_BODY}, \code{SET_CLOENV},
+      \code{STRING_PTR}, \code{DATAPTR}.
+
+      \item The deprecated macros \code{CHARACTER_DATA} and
+      \code{CHARACTER_POINTER} now return \code{const} pointers since using
+      writable pointers in packages is not safe.
+
+      \item New function \code{DATAPTR_RW} for use in implementing
+      \code{ALTREP} \code{Dataptr} methods. This function should not be
+      used in any other contexts.
     }
   }
 
@@ -132,11 +254,17 @@
   \subsection{DEPRECATED AND DEFUNCT}{
     \itemize{
       \item \code{structure(NULL, <name> = <val>)} is now defunct.% deprecated r71841, 2016-12-27
+      \item Three \code{tk*.slaves()} functions were deprecated in favor of
+      \code{tk*.child()} which do need Tcl/Tk version \code{8.6} or higher.
     }
   }
 
   \subsection{BUG FIXES}{
     \itemize{
+      \item Profiling \code{"mle"} objects (\pkg{stats4} package) could fail
+      because profile MLE used starting value from full MLE. Now starts from profile MLE
+      from previous step.
+
       \item Setting \code{attributes} on primitive functions is now an
       error; previously it modified without copying (as noticed by
       \I{Henrik Bengtsson} on the R-devel mailing list).
@@ -188,12 +316,6 @@
       entries if the length is increased.  Thanks to \I{Mikael Jagan}'s
       \PR{18917}.
 
-      \item Fix for glyph rendering on the \code{quartz()} device when
-      there is other (\dQuote{normal}) text drawn on the device.  The
-      problem was that the text transformation matrix was not reset
-      so glyphs would be rendered incorrectly (often completely outside
-      the device, i.e., not visible).
-
       \item \code{<complex>[i] <- NA} now only sets the \emph{real} part to
       \code{NA}, consistently with the \code{as.complex(NA)} behaviour
       since \R 4.4.0; thanks to \I{Mikael Jagan}'s \PR{18918}.
@@ -206,11 +328,57 @@
       \verb{\Sexpr}-generated Rd code, fixing a regression in \R 3.6.0
       originally reported by \I{Georgi Boshnakov} and later also in \PR{18470}.
       An inactive \verb{#ifdef} block no longer breaks the paragraph.
+
+      \item Parsing a multi-line string from Rd \verb{\Sexpr} code no
+      longer doubles the newlines.
+
+      \item \code{requireNamespace(.., versionCheck = *)} now shows an
+      error and returns \code{FALSE} when the package version check is not
+      fulfilled, thanks to \I{Iris Simmons} and \I{Trevor Davis}'s
+      \PR{18255}.
+      Additionally, the \code{versionCheck} argument is checked and when
+      invalid, an error is signalled to avoid subsequent confusing error
+      messages.
+
+      \item \code{requireNamespace()} now throws an error even if the
+      name space is already loaded if it is called with an unmatched
+      argument such as \code{quitely = TRUE} or \code{quiet = TRUE}
+      (argument \code{quietly} cannot be abbreviated as it follows
+      \code{\dots}).
+      %% side effect of c88540
+      \item \code{rep()} signals more specific error messages, notably when
+      using both \code{times} and \code{each} optional arguments.  Fixes
+      \PR{18926}, thanks to \I{Ella Kaye} and collaborators at \I{useR! 2025}'s
+      \sQuote{\I{R Dev Day}}.
+
+      \item \code{jitter(x, amount, factor)} becomes more robust for
+      non-finite \code{x} or also negative \code{amount}, \code{factor}.
+      \code{help(jitter)} is easier to read, fixing \PR{17279}, thanks to
+      its contributors.
+
+      \item Plain-text help (\code{Rd2txt}) lacked markup for
+      \samp{\cite}d titles, which are now wrapped in single quotes.
+
+      \item Default column labels are now correctly aligned when printing a
+      matrix with right alignment (\PR{18943}, thanks to \I{Mikael Jagan}).
+
+      \item \code{poly(fct, n)} signals an error again, for a
+      non-\code{ordered} factor \code{fct}, thanks to \I{Roland Fuss}'
+      notice on R-devel.
+
+      \item \code{terms(<formula>, simplify=TRUE)} now works correctly also
+      in the cases where the formula has more than one term with NAs such
+      as \code{f(u, b=NA)} or \code{g(NA)}, finally fixing \PR{15275}
+      thanks to \I{Mikael Jagan}'s patch.
+
+      \item The help page \code{example(matplot)} now correctly labels
+      Sepal vs Petal dimensions in its first iris data plot, thanks to
+      \I{Jeff Dick}'s post on R-devel.
     }
   }
 }
 
-\section{\Rlogo CHANGES IN R 4.5.1 patched}{
+\section{\Rlogo CHANGES IN R 4.5.2}{
 
   \subsection{UTILITIES}{
     \itemize{
@@ -255,6 +423,41 @@
 
       \item \code{<POSIXlt>[*]} (re-)setting \code{"balanced"}, fixing
       \PR{18681} comment #7, thanks to \I{Mikael Jagan}.
+
+      \item All four of \code{{col,row}{Sums,Means}(Z, na.rm=TRUE)} now correctly work
+      with complex \code{Z} where \code{is.na(Re(Z))} differs from \code{is.na(Im(Z))},
+      fixing \PR{18942}, unearthed by \I{Dirk Eddelbuettel}.
+
+      \item Fix for glyph rendering on the \code{quartz()} device when
+      there is other (\dQuote{normal}) text drawn on the device.  The
+      problem was that the text transformation matrix was not reset
+      so glyphs would be rendered incorrectly (often completely outside
+      the device, i.e., not visible).
+
+      \item Functions \code{install.packages()} and \code{download.packages()} again
+      consult option \code{download.file.method} when the download method is
+      unspecified.
+
+      \item \I{Tanguy Barthelemy} and colleagues at the
+      \sQuote{\I{R Dev Day}} following \I{Rencontres R} in May 2025
+      extended the help page of \code{lm()}, fixing \PR{18058}.
+      As suggested by \I{Thomas Soeiro}, such notes were also added to the
+      \code{glm()}, \code{poly()} and \code{splines::bs()} and \code{ns()}
+      pages.
+
+      \item \code{lbeta(1i, 1)} now signals an error, as \code{lbeta()} is not implemented
+      for \code{complex}, fixing \PR{18946} from \I{Ben Bolker} and  \I{Kasper Kristensen}.
+
+      \item The Cairo-based SVG device uses \code{pt} as the default
+      document unit also with Cairo >= 1.17.8 (\PR{18912}).
+
+      \item \code{pretty(*, eps.correct = 2)} has been fixed, e.g., to
+      avoid over 1 million length result for \code{pretty(c(0, 1e-322), eps.correct = 2)}.
+
+      \item When \code{"POSIXlt"} date-time objects are \code{NA}-padded
+      from subsetting or increasing \code{length} in the \code{`[`} or
+      \code{`length<-`} methods, the \code{"balanced"} attribute is set
+      to \code{NA}, now; noted in \PR{18681}, thanks to \I{Mikael Jagan}.
     }
   }
 }
@@ -320,12 +523,6 @@
 }
 
 \section{\Rlogo CHANGES IN R 4.5.0}{
-  %% \subsection{SIGNIFICANT USER-VISIBLE CHANGES}{
-  %%   \itemize{
-  %%     \item .
-  %%   }
-  %% }
-
   \subsection{NEW FEATURES}{
     \itemize{
       \item \code{as.integer(rl)} and hence \code{as.raw(rl)} now work for
@@ -487,6 +684,14 @@
       \item New function \code{use()} to use packages in R scripts with
       full control over what gets added to the search path.  (Actually
       already available since \R 4.4.0.)
+
+      \item New connection type \code{zstdfile} for files compressed by
+      \command{zstd} if \R{} was built with such support.  \code{file()}
+      and \code{gzfile()} can automagically read such files.
+
+      \item \code{memCompress()} and \code{memDecompress()} have options
+      to use \command{zstd} compression if \R{} was built with support
+      for it.
 
       \item There is some support for \command{zstd} compression of
       tarballs in \code{tar()} and \code{untar()}.  (This depends on OS
@@ -982,7 +1187,7 @@
       (non integer) seconds.  Fixes \PR{17350}, thanks to new contributions
       by \I{LatinR}'s \sQuote{\I{R Dev Day}} participants, \I{Heather
       Turner} and \I{Dirk Eddelbuettel}; also fixes more cases, notably
-      when \code{format} contains "%OS<nodigit>".
+      when \code{format} contains \samp{\%OS<nodigit>}.
 
       \item \code{options(scipen = NULL)} and other invalid values now
       signal an error instead of invalidating ops relying on a finite
@@ -1320,7 +1525,7 @@
       \code{"glm"} method for \code{profile()} and the \code{plot()}
       and \code{pairs()} methods for class \code{"profile"} have been
       copied from \pkg{MASS} to \pkg{stats}.  (\code{profile.nls()} and
-      \code{plot.profile.nls()} were already in \code{stats}.)
+      \code{plot.profile.nls()} were already in \pkg{stats}.)
 
       \item The \code{confint()} and \code{profile} methods for
       \code{"glm"} objects have gained a possibility to do profiling
@@ -5803,7 +6008,7 @@
       wildcard and tilde expansion.  Elements of \code{x} of value
       \code{"~"} are now ignored.
 
-      \item \code{mle()} in the \code{stats4} package has had its
+      \item \code{mle()} in the \pkg{stats4} package has had its
       interface extended so that arguments to the negative
       log-likelihood function can be one or more vectors, with similar
       conventions applying to bounds, start values, and parameter values
@@ -6185,7 +6390,7 @@
       \code{n - k} for \code{k} and \code{n} was only \emph{nearly} integer
       (report from Erik Scott Wright).
 
-      \item \code{mle()} in the \code{stats4} package had problems
+      \item \code{mle()} in the \pkg{stats4} package had problems
       combining use of box constraints and fixed starting values (in
       particular, confidence intervals were affected).
 

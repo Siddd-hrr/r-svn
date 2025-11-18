@@ -1,6 +1,6 @@
 % File src/library/datasets/man/swiss.Rd
 % Part of the R package, https://www.R-project.org
-% Copyright 1995-2019 R Core Team
+% Copyright 1995-2025 R Core Team
 % Distributed under GPL 2 or later
 
 \name{swiss}
@@ -48,9 +48,7 @@
 \source{
   Project \dQuote{16P5}, pages 549--551 in
 
-  Mosteller, F. and Tukey, J. W. (1977)
-  \emph{Data Analysis and Regression: A Second Course in Statistics}.
-  Addison-Wesley, Reading Mass.
+  \bibshow{R:Mosteller+Tukey:1977}
 
   indicating their source as
   \dQuote{Data used by permission of \I{Franice van de Walle}. Office of
@@ -58,15 +56,13 @@
   assembled under NICHD contract number No \I{1-HD-O-2077}.}
 }
 \references{
-  Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988)
-  \emph{The New S Language}.
-  Wadsworth & Brooks/Cole.
+  \bibshow{R:Becker+Chambers+Wilks:1988}
 }
 \note{
   Files for all 182 districts in 1888 and other years are available via
-  \url{https://opr.princeton.edu/princeton-european-fertility-project},
+  \url{https://oprdata.princeton.edu/archive/pefp/},
   currently at
-  \url{https://opr.princeton.edu/switzerland-socio-economic-variables-1870-1930}.
+  \url{https://oprdata.princeton.edu/archive/pefp/switz.aspx}.
 
   They state that variables \code{Examination} and \code{Education}
   are averages for 1887, 1888 and 1889.

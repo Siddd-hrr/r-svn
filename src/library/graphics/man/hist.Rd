@@ -147,12 +147,8 @@ hist(x, \dots)
 }
 
 \references{
-  Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988)
-  \emph{The New S Language}.
-  Wadsworth & Brooks/Cole.
-
-  Venables, W. N. and Ripley. B. D. (2002)
-  \emph{Modern Applied Statistics with S}.  Springer.
+  \bibshow{R:Becker+Chambers+Wilks:1988,
+    R:Venables+Ripley:2002}
 }
 
 \seealso{

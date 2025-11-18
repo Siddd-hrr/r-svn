@@ -333,7 +333,8 @@ if(FALSE) {
             if (pkglock)
                 lock <- "pkglock"
             utils:::unpackPkgZip(pkg, pkg_name, lib, libs_only, lock,
-                                 reuse_lockdir = reuse_lockdir)
+                                 reuse_lockdir = reuse_lockdir,
+                                 name_from_dir = TRUE)
             return()
         }
 
@@ -2856,7 +2857,9 @@ if(FALSE) {
 
     html_header <- function(pkg, title, version, encoding, conn)
     {
-        cat(paste(HTMLheader(title, Rhome="../../..",
+        cat(paste(HTMLheader(title,
+                             logo = staticLogoPath(dir, relative = TRUE, Rhome = "../../..", dir = TRUE),
+                             Rhome="../../..",
                              up="../../../doc/html/packages.html",
                              css = "R.css"),
                   collapse = "\n"),

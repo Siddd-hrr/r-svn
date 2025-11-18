@@ -290,7 +290,7 @@ static cairo_pattern_t *CairoTilingPattern(SEXP pattern, pX11Desc xd)
     cairo_set_matrix(cc, &tm);
     /* Play the pattern function to build the pattern */
     R_fcall = PROTECT(lang1(R_GE_tilingPatternFunction(pattern)));
-    eval(R_fcall, R_GlobalEnv);
+    Rf_eval_with_gd(R_fcall, R_GlobalEnv, GEcurrentDevice());
     UNPROTECT(1);
     /* Close group and return resulting pattern */
     cairo_tiling = cairo_pop_group(cc);
@@ -453,7 +453,7 @@ static cairo_path_t* CairoCreateClipPath(SEXP clipPath, int index, pX11Desc xd)
     cairo_new_path(cc);
     /* Play the clipPath function to build the clipping path */
     R_fcall = PROTECT(lang1(clipPath));
-    eval(R_fcall, R_GlobalEnv);
+    Rf_eval_with_gd(R_fcall, R_GlobalEnv, GEcurrentDevice());
     UNPROTECT(1);
     /* Apply path fill rule */
     switch (R_GE_clipPathFillRule(clipPath)) {
@@ -630,7 +630,7 @@ static cairo_pattern_t *CairoCreateMask(SEXP mask, pX11Desc xd)
     cairo_set_operator(cc, CAIRO_OPERATOR_OVER);
     /* Play the mask function to build the mask */
     R_fcall = PROTECT(lang1(mask));
-    eval(R_fcall, R_GlobalEnv);
+    Rf_eval_with_gd(R_fcall, R_GlobalEnv, GEcurrentDevice());
     UNPROTECT(1);
     /* Close group and return resulting mask */
     return cairo_pop_group(cc);
@@ -823,14 +823,14 @@ static cairo_pattern_t *CairoCreateGroup(SEXP src, int op, SEXP dst,
     if (dst != R_NilValue) {
         /* Play the destination function to draw the destination */
         R_fcall = PROTECT(lang1(dst));
-        eval(R_fcall, R_GlobalEnv);
+        Rf_eval_with_gd(R_fcall, R_GlobalEnv, GEcurrentDevice());
         UNPROTECT(1);
     }
     /* Set the group operator */
     cairo_set_operator(cc, CairoOperator(op));
     /* Play the source function to draw the source */
     R_fcall = PROTECT(lang1(src));
-    eval(R_fcall, R_GlobalEnv);
+    Rf_eval_with_gd(R_fcall, R_GlobalEnv, GEcurrentDevice());
     UNPROTECT(1);
 
     /* Close group and return the resulting pattern */
@@ -1464,6 +1464,54 @@ static SEXP Cairo_Cap(pDevDesc dd)
 }
 #endif
 
+#if defined(Win32) && defined(CAIRO_HAS_WIN32_FONT)
+# include <windows.h>
+# include <cairo-win32.h>
+
+/* Select font face using win32 cairo backend, which uses Win32 API
+   and finds fonts known to the OS.
+
+   This function has been added to overcome problems with
+   cairo_select_font_face() seen in cairo 1.18, where fonts installed
+   by user (to the private fonts directory or the system-wide directory)
+   were not found (PR#18955).
+
+   Inspired by _cairo_win32_font_face_create_for_toy from cairo.
+*/
+static void
+R_win32_cairo_select_font_face(cairo_t *cr,
+                               const char *family,
+                               cairo_font_slant_t slant,
+                               cairo_font_weight_t weight)
+{
+    LOGFONTW lf;
+    cairo_font_face_t *ff;
+
+    memset(&lf, 0, sizeof(LOGFONTW));
+    if (mbstowcs(lf.lfFaceName, family, LF_FACESIZE - 1) == (size_t) -1)
+	return;
+    lf.lfFaceName[LF_FACESIZE - 1] = L'\0';
+
+    if (weight == CAIRO_FONT_WEIGHT_BOLD)
+	lf.lfWeight = FW_BOLD;
+    else
+	lf.lfWeight = FW_NORMAL;
+    if (slant == CAIRO_FONT_SLANT_ITALIC || slant == CAIRO_FONT_SLANT_OBLIQUE)
+	lf.lfItalic = TRUE;
+    lf.lfCharSet = DEFAULT_CHARSET;
+    lf.lfOutPrecision = OUT_DEFAULT_PRECIS;
+    lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
+    lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
+
+    ff = cairo_win32_font_face_create_for_logfontw(&lf);
+    if (ff && cairo_font_face_status(ff) == CAIRO_STATUS_SUCCESS)
+	cairo_set_font_face(cr, ff);
+    else /* fall back to the default handler if not found */
+	cairo_select_font_face(cr, family, slant, weight);
+    if (ff) cairo_font_face_destroy(ff);
+}
+#endif
+
 #ifdef HAVE_PANGOCAIRO
 /* ------------- pangocairo section --------------- */
 
@@ -1906,8 +1954,11 @@ static void FT_getFont(pGEcontext gc, pDevDesc dd, double fs)
 	// none of the above, so ultimate fallback.
 	else family = hv;
     }
-
-    cairo_select_font_face (xd->cc, family, slant, wt);
+#if defined(Win32) && CAIRO_VERSION > CAIRO_VERSION_ENCODE(1, 16, 0) && defined(CAIRO_HAS_WIN32_FONT)
+    R_win32_cairo_select_font_face(xd->cc, family, slant, wt);
+#else
+    cairo_select_font_face(xd->cc, family, slant, wt);
+#endif
     /* FIXME: this should really use cairo_set_font_matrix
        if pixels are non-square on a screen device. */
     cairo_set_font_size (xd->cc, size);
@@ -2137,7 +2188,7 @@ static void CairoStrokePath(SEXP path,
     cairo_new_path(cc);
     /* Play the path function to build the path */
     R_fcall = PROTECT(lang1(path));
-    eval(R_fcall, R_GlobalEnv);
+    Rf_eval_with_gd(R_fcall, R_GlobalEnv, GEcurrentDevice());
     UNPROTECT(1);
     /* Decrement the "appending" count */
     xd->appending--;
@@ -2176,7 +2227,7 @@ static void CairoFillPath(SEXP path,
     cairo_new_path(cc);
     /* Play the path function to build the path */
     R_fcall = PROTECT(lang1(path));
-    eval(R_fcall, R_GlobalEnv);
+    Rf_eval_with_gd(R_fcall, R_GlobalEnv, GEcurrentDevice());
     UNPROTECT(1);
     /* Decrement the "appending" count */
     xd->appending--;
@@ -2217,7 +2268,7 @@ static void CairoFillStrokePath(SEXP path,
     cairo_new_path(cc);
     /* Play the path function to build the path */
     R_fcall = PROTECT(lang1(path));
-    eval(R_fcall, R_GlobalEnv);
+    Rf_eval_with_gd(R_fcall, R_GlobalEnv, GEcurrentDevice());
     UNPROTECT(1);
     /* Decrement the "appending" count */
     xd->appending--;
@@ -2360,6 +2411,7 @@ static void applyFontVar(cairo_font_face_t *cairo_face,
                          SEXP font, int numVar,
                          pX11Desc xd)
 {
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 16, 0)
     int i;
     int success = 0;
     cairo_scaled_font_t *scaled_font;
@@ -2435,6 +2487,9 @@ static void applyFontVar(cairo_font_face_t *cairo_face,
     if (!success) {
         warning(_("Failed to apply font variations"));
     }
+#else
+    warning(_("Variable fonts not supported (requires Cairo >= 1.16.0)"));
+#endif
 }
 
 static void Cairo_Glyph(int n, int *glyphs, double *x, double *y, 
@@ -2479,8 +2534,13 @@ static void Cairo_Glyph(int n, int *glyphs, double *x, double *y,
         cairo_set_font_face(xd->cc, cairo_face);
     } else {
         warning(_("Font file not found; matching font family and face"));
-        cairo_select_font_face(xd->cc, 
+    #if defined(Win32) && CAIRO_VERSION > CAIRO_VERSION_ENCODE(1, 16, 0) && defined(CAIRO_HAS_WIN32_FONT)
+	R_win32_cairo_select_font_face(xd->cc,
+                                       R_GE_glyphFontFamily(font), sl, wt);
+    #else
+	cairo_select_font_face(xd->cc,
                                R_GE_glyphFontFamily(font), sl, wt);
+    #endif
     }
     /* Text size (in "points") MUST match the scale of the glyph 
      * location (in "bigpts").  The latter depends on device dpi.

@@ -386,8 +386,8 @@ BugReports: https://pkgname.bugtracker.url
 The format is that of a version of a `Debian Control File' (see the help
 for @samp{read.dcf} and
 @uref{https://www.debian.org/doc/debian-policy/ch-controlfields.html}:
-@R{} does not require encoding in UTF-8 and does not support comments
-starting with @samp{#}).  Fields start with an @acronym{ASCII} name
+@R{} does not require encoding in UTF-8).
+Fields start with an @acronym{ASCII} name
 immediately followed by a colon: the value starts after the colon and a
 space.  Continuation lines (for example, for descriptions longer than
 one line) start with a space or tab.  Field names are case-sensitive:
@@ -1120,7 +1120,8 @@ not those in @samp{Enhances} nor those not mentioned in the
 @file{DESCRIPTION} file.  It is recommended that a package is checked
 with each of these set, as well as with neither.
 
-@strong{WARNING:} Be extremely careful if you do things which would be
+@quotation Warning
+Be extremely careful if you do things which would be
 run at installation time depending on whether suggested packages are
 available or not---this includes top-level code in @R{} code files,
 @code{.onLoad} functions and the definitions of S4 classes and methods.
@@ -1132,6 +1133,7 @@ on a different machine).  Even worse, the problems might not be confined
 to your package, for the namespaces of your suggested packages will also
 be loaded whenever any package which imports yours is installed and so
 may be captured there.
+@end quotation
 
 
 @node The INDEX file
@@ -2992,9 +2994,16 @@ The webpage @uref{https://en.cppreference.com/w/cpp/compiler_support.html}
 gives some information on which compiler versions are known to support
 recent C++ features.
 
-C++ standards have deprecated and later removed features.  Be aware that
-some current compilers still accept removed features in C++17 mode,
-such as @code{std::unary_function} (deprecated in C++11, removed in C++17).
+@c https://en.wikipedia.org/wiki/C%2B%2B17
+@c https://en.wikipedia.org/wiki/C%2B%2B20
+C++ standards have deprecated and later removed features (such as
+headers, types and functions).  Be aware that some current compilers
+still accept removed features in C++17 mode, such as
+@code{std::unary_function} (deprecated in C++11, removed in C++17) or
+removed in C++20 (such as @code{std::uncaught_exception}). And some
+compilers in use are far from current, notably those used for
+@acronym{CRAN} macOS builds.  The Wikipedia pages for the various
+standards list deprecated and removed (and undeprecated) features.
 
 For maximal portability a package should specify the standard it
 requires for code in its @file{src} directory by including something
@@ -3065,19 +3074,19 @@ that the script selects the correct C++ compiler and standard,
 @emph{via} something like
 
 @example
-CXX17=`"$@{R_HOME@}/bin/R" CMD config CXX17`
-if test -z "$CXX17"; then
-  AC_MSG_ERROR([No C++17 compiler is available])
+CXX20=`"$@{R_HOME@}/bin/R" CMD config CXX20`
+if test -z "$CXX20"; then
+  AC_MSG_ERROR([No C++20 compiler is available])
 fi
-CXX17STD=`"$@{R_HOME@}/bin/R" CMD config CXX17STD`
-CXX="$@{CXX17@} $@{CXX17STD@}"
-CXXFLAGS=`"$@{R_HOME@}/bin/R" CMD config CXX17FLAGS`
+CXX20STD=`"$@{R_HOME@}/bin/R" CMD config CXX20STD`
+CXX="$@{CXX20@} $@{CXX20STD@}"
+CXXFLAGS=`"$@{R_HOME@}/bin/R" CMD config CXX20FLAGS`
 ## for an configure.ac file
 AC_LANG(C++)
 @end example
 
 @noindent
-if C++17 was specified, but using
+if C++20 was specified, but using
 @example
 CXX=`"$@{R_HOME@}/bin/R" CMD config CXX`
 CXXFLAGS=`"$@{R_HOME@}/bin/R" CMD config CXXFLAGS`
@@ -3093,15 +3102,15 @@ down the macros to specify the appropriate compiler, e.g.@: in
 @example
 sublibs:
          @@(cd libs && $(MAKE) \
-            CXX="$(CXX17) $(CXX17STD)" CXXFLAGS="$(CXX17FLAGS) $(CXX17PICFLAGS)")
+            CXX="$(CXX20) $(CXX20STD)" CXXFLAGS="$(CXX20FLAGS) $(CXX20PICFLAGS)")
 @end example
 
 The discussion above is about the standard @R{} ways of compiling C++:
 it will not apply to packages using @file{src/Makefile} or building in a
 subdirectory that do not set the C++ standard.  Do not rely on the
 compilers' default C++ standard, which varies widely and gets changed
-frequently by vendors -- for example Apple clang up to at least 16
-defaults to C++98, @I{LLVM} clang 14--15 to C++14, @I{LLVM} clang 16--20
+frequently by vendors -- for example Apple clang up to at least 17
+defaults to C++98, @I{LLVM} clang 14--15 to C++14, @I{LLVM} clang 16--21
 and @command{g++} 11--15 to C++17.
 
 For a package with a @file{src/Makefile} (or a Windows analogue),
@@ -4233,7 +4242,9 @@ non-standard names such as @code{[<-.fractions} must be.)
 
 For packages with many variables to export it may be more convenient to
 specify the names to export with a regular expression using
-@code{exportPattern}.  The directive
+@code{exportPattern}. This pattern should be POSIX 1003.2 extended regular
+expression (see the help for @code{regexp} in @R{} for the precise details).
+The directive
 
 @findex exportPattern
 @example
@@ -5289,7 +5300,9 @@ work as intended.  For alternatives, see @ref{Suggested packages} and
 @item
 Examples can be run interactively @emph{via} @code{example} as well as
 in batch mode when checking.  So they should behave appropriately in
-both scenarios, conditioning by @code{interactive()} the parts which
+both scenarios, conditioning by @code{interactive()} and since @R{} 4.6.0
+typically even by @code{interactive() && !getOption("quiet", FALSE)},
+the parts which
 need an operator or observer.  For instance, progress
 bars@footnote{except perhaps the simplest kind as used by
 @code{download.file()} in non-interactive use.} are only appropriate in
@@ -5403,13 +5416,14 @@ be for binary packages).
 When specifying a minimum Java version please use the official version
 names, which are (confusingly)
 @example
-1.1 1.2 1.3 1.4 5.0 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21
+1.1 1.2 1.3 1.4 5.0 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
 @end example
 @noindent
-and as from 2018 a year.month scheme such as @samp{18.9} is also in
-use.  Fortunately only the integer values are likely to be relevant.
-If at all possible, use one of the @acronym{LTS} versions (8, 11, 17, 21 @dots{})
-as the minimum version.  The preferred form of version specification is
+and as from 2018 a year.month scheme such as @samp{18.9} is also in use.
+Fortunately only the integer values are likely to be relevant.  If at
+all possible, use one of the @acronym{LTS} versions (8, 11, 17, 21, 25
+@dots{}) as the minimum version.  The preferred form of version
+specification is
 @example
 SystemRequirements: Java (>= 11)
 @end example
@@ -6432,7 +6446,7 @@ macro.  C23 allows zero arguments in a similar way.
 @end itemize
 
 Some additional information for C++ is available at
-@uref{https://journal.r-project.org/archive/2011-2/RJournal_2011-2_Plummer.pdf}
+@uref{https://journal.R-project.org/articles/RJ-2011-020/RJ-2011-020.pdf}
 by @I{Martyn Plummer}.
 
 Several OSes have or currently do provide multiple C++ runtimes ---
@@ -7271,7 +7285,7 @@ is @LaTeX{}-like, with the backslash used as a prefix on markup
 (e.g.@: @code{@{load@}}).  The least common type of text is `verbatim'
 text, where no markup other than the comment marker (@code{%}) is
 processed.  There is also a rare variant of `verbatim' text
-(used in @code{\eqn}, @code{\deqn}, @code{\figure},
+(used in the first argument of @code{\eqn}, @code{\deqn}, @code{\figure},
 and @code{\newcommand}) where comment markers need not be escaped.
 The final type is @R{}-like, intended for @R{} code, but allowing some
 embedded macros.  Quoted strings within @R{}-like text are handled
@@ -8647,6 +8661,102 @@ and environment variable @env{_R_CYRILLIC_TEX_} being set.)
 Note that this mechanism works best with Latin letters: the coverage of
 UTF-8 in @LaTeX{} is quite low.
 
+@node Bibliographic citations and references
+@section Bibliographic citations and references
+
+For R at least 4.6.0 one can auto-generate bibliographic citations and
+references from bibentries in bibliographic databases in R or Bib@TeX{}
+formats.  This is implemented via build stage @code{\Sexpr} macros
+(@pxref{Dynamic pages}) in the file @file{share/Rd/macros/system.Rd} of
+the @R{} source or home directory.  For @HTML{} output, the citations
+are conveniently hyperlinked to the corresponding references.
+
+Textual and parenthetical citations are obtained via, respectively,
+@code{\bibcitet} and @code{\bibcitep} (the naming follows that of
+@code{\citet} and @code{\citep} in the @LaTeX{} @code{natbib} package
+(@uref{https://mirrors.ctan.org/macros/latex/contrib/natbib, Daly
+2010}).  These macros both take a comma separated @var{citespec} list as
+argument, where a @var{citespec} can be a @var{keyspec} or of the form
+@code{@var{before}|@var{keyspec}|@var{after}} with both @samp{|}
+mandatory and @var{before} and @var{after} possibly empty text to be
+inserted before and after the citation if not empty.  If these texts
+contain commas, these can be backslash-escaped: due to the way Rd macros
+are processed, this needs 6 (!) backslashes, see the examples below.
+(This is clearly inconvenient, but most likely too late to change.)
+
+A @var{keyspec} is either a simple @var{key} or of the form
+@code{@var{pkg}::@var{key}}.  In the former case, @var{key} is taken as
+the key of a bibentry in R's system bibentry data base (available via
+the currently unexported @code{tools:::R_bibentries()} with sources in
+the @file{.R} files in the @file{share/bibentries} directory of the R
+sources).  In the latter case, @var{key} is looked up in the bibentry
+data base of package @var{pkg}, made available in the packages sources
+either as @file{inst/REFERENCES.R} in R format (an R code file encoded
+in UTF-8 with calls to @code{bibentry()}, as for the
+@file{inst/CITATION} file) or as @file{inst/REFERENCES.bib} in Bib@TeX{}
+format (this needs @CRANpkg{bibtex} to be installed).
+
+References (usually in the @code{\references} section) are obtained via
+@code{\bibshow}, which takes a comma-separated @var{keyspec} list as
+argument.  The special @I{keyspec} @samp{*} indicates the list of ``all
+references cited so far'', using an empty @I{keyspec} list clears that
+list.
+
+Finally, @code{\bibinfo} allows to modify bibentries.  Using
+@example
+\bibinfo@{@var{keyspec}@}@{@var{field}@}@{@var{value}@}
+@end example
+@noindent
+will set the @var{field} of the bibentry corresponding to @var{keyspec}
+to @var{value}.  This can be used in particular to ``annotate'' the
+bibentry, by adding @samp{note}, @samp{footer} or @samp{header} fields.
+
+For example,
+@example
+\bibcitet@{R:Becker+Chambers+Wilks:1988@}
+@end example
+@noindent
+gives a textual citation of the ``@emph{Blue Book}''
+(`@I{Becker, Chambers, and Wilks (1988)}' when first encountered),
+@example
+\bibcitep@{e.g.\\\\\\,|R:Chambers+Hastie:1992|page 123@}
+@end example
+@noindent
+gives a parenthetical citation of a page in the ``@emph{White Book}''
+(`@I{(e.g., Chambers and Hastie 1992, page 123)}' when first encountered).
+An Rd file having cited the above two and also wanting to include the
+``@emph{Green Book}'' in its references could use
+@example
+\references@{
+  \bibshow@{*, R:Chambers:1998@}
+@}
+@end example
+@noindent
+If one wanted to highlight a particular page range for the last
+reference, one could use one of
+@example
+\bibinfo@{R:Chambers:1998@}@{note@}@{Pages 23--45@}
+\bibinfo@{R:Chambers:1998@}@{footer@}@{Pages 23--45.@}
+@end example
+@noindent
+before the @code{\bibshow} (the note will be added in-line, the footer
+on a new line).
+
+The @code{\bibinfo} mechanism can also be employed to disambiguate
+citations for bibentries which are different but have the same
+author-year citation, which is typically done by adding a letter suffix
+to the year (e.g., `Eddy (1973a)' and `Eddy (1973b)').  Getting the `a'
+automatically is not possible with the current implementation (this
+would need to have all @I{keyspec}s used in the Rd file before
+generating the citations).  In @HTML{} output, one can disambiguate by
+simply following the hyperlinks to the references.  One can fully
+disambiguate by manually adding the suffixes to the year fields, e.g.
+@example
+\bibinfo@{R:Eddy:1977a@}@{year@}@{1977a@}
+\bibinfo@{R:Eddy:1977b@}@{year@}@{1977b@}
+@end example
+@noindent
+(see file @file{src/library/grDevices/man/chull.Rd} in the R sources).
 
 @node Processing documentation files
 @section Processing documentation files
@@ -13967,8 +14077,9 @@ Setting the type to @code{LANGSXP} makes this a call which can be evaluated.
 Customarily, the evaluation environment is passed from the calling
 @R{} code (see @code{rho} above). In special cases it is possible that
 the C code may need to obtain the current evaluation environment
-which can be done via @code{R_GetCurrentEnv()} function.
-@findex R_GetCurrentEnv
+which can be done via @code{R_GetCurrentEnv()} function. This function
+is experimental and may be changed or removed in the future.
+@eapifun R_GetCurrentEnv
 
 
 @node Zero-finding
@@ -14660,7 +14771,7 @@ memcpy(REAL(newx), REAL_RO(x), LENGTH(x) * sizeof(double));
 @end example
 @noindent
 are undefined behaviour without a prior check on the length of @code{x}.
-@c Returning 0x000000000001 was inroduced in R 4.5.0.
+@c Returning 0x000000000001 was introduced in R 4.5.0.
 
 Formerly it was possible for packages to obtain internal versions of
 some accessors by defining @samp{USE_RINTERNALS} before including
@@ -14858,14 +14969,15 @@ iteration strategy.
 Some functions useful in implementing new alternate representation
 classes, beyond those defined in @file{R_ext/Altrep.h}, include
 @code{ALTREP}, @code{ALTREP_CLASS}, @code{R_altrep_data1},
-@code{R_set_altrep_data1}, @code{R_altrep_data2}, and
-@code{R_set_altrep_data2}.
+@code{R_set_altrep_data1}, @code{R_altrep_data2},
+@code{R_set_altrep_data2}, and @code{DATAPTR_RW}.
 @eapifun ALTREP
 @eapifun ALTREP_CLASS
 @eapifun R_altrep_data1
 @eapifun R_set_altrep_data1
 @eapifun R_set_altrep_data2
 @eapifun R_altrep_data2
+@eapifun DATAPTR_RW
 @eapihdr R_ext/Altrep.h
 
 For some objects it may be possible to very efficiently determine
@@ -15196,6 +15308,8 @@ void * Memzero(@var{p}, @var{n})
 for the @code{nul} terminator.  @code{Memcpy} and @code{Memzero} take
 @code{n} items from array @code{p} and copy them to array @code{q} or
 zero them respectively.
+@eapifun R_chk_memcpy
+@eapifun R_chk_memset
 
 
 @node Error signaling
@@ -15263,6 +15377,9 @@ subroutine rwarn(@var{message})
 
 Messages of more than 255 characters are truncated, with a warning.
 
+The subroutine @code{xerbla} is also available for compatibility with
+BLAS and LAPACK, but is not intended for use in packages.
+@forfun xerbla
 
 @node Random numbers
 @section Random number generation
@@ -15848,8 +15965,8 @@ The header files @file{R_ext/BLAS.h}, @file{R_ext/Lapack.h} and
 LINPACK linear algebra functions included in @R{}.  These are expressed
 as calls to Fortran subroutines, and they will also be usable from
 users' Fortran code.  Although not part of the official @acronym{API},
-this set of subroutines is unlikely to change (but might be
-supplemented).
+this set of subroutines is unlikely to change (but routines have been
+added in the past, most recently in @R{} 4.5.0).
 @comment API: This is really confusing. What is the 'official API'? Are
 @comment things in these headers OK so use in packages or not?
 
@@ -16444,6 +16561,11 @@ final value returned in @code{Fmin}.  Most of the other parameters can
 be found from the help page for @code{optim}: see the source code
 @file{src/appl/lbfgsb.c} for the values of @code{nbd}, which
 specifies which bounds are to be used.
+
+The function @code{optif9} is included in the experimental API for use
+by the @pkg{nlme} package. It is subject to change and not intended for
+use by other packages.
+@eapifun optif9
 
 
 @node Integration
@@ -17078,12 +17200,11 @@ Header file @file{Rversion.h} (@strong{not} included by @file{R.h})
 defines a macro @code{R_VERSION} giving the version number encoded as an
 integer, plus a macro @code{R_Version} to do the encoding.  This can be
 used to test if the version of @R{} is late enough, or to include
-back-compatibility features.  For protection against very old versions
-of @R{} which did not have this macro, use a construction such as
+back-compatibility features, such as
 
 @example
 @group
-#if defined(R_VERSION) && R_VERSION >= R_Version(3, 1, 0)
+#if R_VERSION >= R_Version(3, 1, 0)
   ...
 #endif
 @end group
@@ -17377,8 +17498,11 @@ functions that should be used instead:
 @itemx DATAPTR
 @itemx STDVEC_DATAPTR
        Use @code{STRING_PTR_RO} and @code{DATAPTR_RO}. Obtaining
-        writable pointers to these data can violate the memory manager's
-        integrity assumptions and is not supported.
+       writable pointers to these data can violate the memory manager's
+       integrity assumptions and is not supported.
+       One exception is that a writable pointer may need to be returned
+       by an @code{ALTREP} @code{Dataptr} method. The function
+       @code{DATAPTR_RW}  can use for this purpose.
 @item isFrame
       Use @code{Rf_isDataFrame}, added in @R{} 4.5.0.
 @item BODY
@@ -17411,6 +17535,9 @@ functions that should be used instead:
        copying attributes from one object to another. Use
        @code{CLEAR_ATTRIB} for removing all attributes, added in @R{}
        4.5.0.
+@item ENVFLAGS
+@itemx SET_ENVFLAGS
+       Use @code{R_EnvironmentIsLocked} and @code{R_LockEnvironment} instead.
 @item R_GetCurrentEnv
       Use @code{environment()} at the @R{} level and pass the result as
       an argument to your C function.
@@ -17564,7 +17691,7 @@ attribute is present.
 Some additional functions may be added for working with attributes.
 
 @node Working with variable bindings
-@subsection Working variable bindings
+@subsection Working with variable bindings
 
 The functions @code{Rf_findVar} and @code{Rf_findVarInFrame} have been used in
 a number of packages but are too low level to be part of the API. For
@@ -17618,6 +17745,10 @@ void CLEAR_ATTRIB(SEXP x)
     SET_OBJECT(x, 0);
     UNSET_S4_OBJECT(x);
 @}
+#endif
+
+#if R_VERSION < R_Version(4, 6, 0)
+# define DATAPTR_RW(x) DATAPTR(x)
 #endif
 @end example
 

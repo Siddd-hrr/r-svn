@@ -1414,13 +1414,9 @@ static R_exprhash_t hashfun(SEXP f)
 
 static void loadCompilerNamespace(void)
 {
-    SEXP fun, arg, expr;
-
-    PROTECT(fun = install("getNamespace"));
-    PROTECT(arg = mkString("compiler"));
-    PROTECT(expr = lang2(fun, arg));
-    eval(expr, R_GlobalEnv);
-    UNPROTECT(3);
+    SEXP arg = PROTECT(mkString("compiler"));
+    R_FindNamespace(arg);
+    UNPROTECT(1);
 }
 
 static void checkCompilerOptions(int jitEnabled)
@@ -1434,7 +1430,7 @@ static void checkCompilerOptions(int jitEnabled)
     PROTECT(arg = ScalarInteger(jitEnabled));
     PROTECT(fcall = lang3(R_TripleColonSymbol, packsym, funsym));
     PROTECT(call = lang2(fcall, arg));
-    eval(call, R_GlobalEnv);
+    eval(call, R_BaseEnv);
     UNPROTECT(3);
     R_Visible = old_visible;
 }
@@ -1833,7 +1829,7 @@ attribute_hidden SEXP R_cmpfun1(SEXP fun)
 
     PROTECT(fcall = lang3(R_TripleColonSymbol, packsym, funsym));
     PROTECT(call = lang2(fcall, fun));
-    PROTECT(val = eval(call, R_GlobalEnv));
+    PROTECT(val = eval(call, R_BaseEnv));
     if (TYPEOF(BODY(val)) != BCODESXP)
 	/* Compilation may have failed because R allocator could not malloc
 	   memory to extend the R heap, so we run GC to release some pages.
@@ -1923,7 +1919,7 @@ static SEXP R_compileExpr(SEXP expr, SEXP rho)
     PROTECT(qexpr = lang2(quotesym, expr));
     /* compile(e, env, options, srcref) */
     PROTECT(call = lang5(fcall, qexpr, rho, R_NilValue, R_getCurrentSrcref()));
-    val = eval(call, R_GlobalEnv);
+    val = eval(call, R_BaseEnv);
     UNPROTECT(3);
     R_Visible = old_visible;
     return val;
@@ -5610,7 +5606,7 @@ static struct { void *addr; int argc; char *instname; } opinfo[OPCOUNT];
 #define GETOP() (*pc++).i
 #define SKIP_OP() (pc++)
 
-#define BCCODE(e) (BCODE *) DATAPTR(BCODE_CODE(e))
+#define BCCODE(e) BCODE_PTR(BCODE_CODE(e))
 #else
 typedef int BCODE;
 
@@ -8722,7 +8718,7 @@ attribute_hidden SEXP R_bcEncode(SEXP bytes)
     v = ipc[0];
     if (v < R_bcMinVersion || v > R_bcVersion) {
 	code = allocVector(INTSXP, m * 2);
-	pc = (BCODE *) DATAPTR(code);
+	pc = BCODE_PTR(code);
 	pc[0].i = v;
 	pc[1].v = opinfo[BCMISMATCH_OP].addr;
 	return code;
@@ -8730,7 +8726,7 @@ attribute_hidden SEXP R_bcEncode(SEXP bytes)
     else {
 	code = allocVector(INTSXP, m * n);
 	memset(INTEGER(code), 0, m * n * sizeof(int));
-	pc = (BCODE *) DATAPTR(code);
+	pc = BCODE_PTR(code);
 
 	for (i = 0; i < n; i++) pc[i].i = ipc[i];
 
@@ -8775,7 +8771,7 @@ attribute_hidden SEXP R_bcDecode(SEXP code) {
     int m = (sizeof(BCODE) + sizeof(int) - 1) / sizeof(int);
 
     n = LENGTH(code) / m;
-    pc = (BCODE *) DATAPTR(code);
+    pc = BCODE_PTR(code);
 
     bytes = allocVector(INTSXP, n);
     ipc = INTEGER(bytes);

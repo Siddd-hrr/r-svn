@@ -681,11 +681,7 @@ add_dummies <- function(dir, Log)
                      paste("  file", paste(sQuote(miss[f]), collapse = ", "),
                            "will not be installed: please remove it\n"))
         }
-        if (dir.exists("inst/doc")) {
-            if (R_check_doc_sizes) check_doc_size()
-            else if (as_cran)
-                warningLog(Log, "'qpdf' is needed for checks on size reduction of PDFs")
-        }
+        if (R_check_doc_sizes && dir.exists("inst/doc")) check_doc_size()
         if (dir.exists("inst/doc") && do_install) check_doc_contents()
         if (dir.exists("vignettes")) check_vign_contents(ignore_vignettes)
         ## R 4.5.0: remove this long-obsolete check
@@ -3297,12 +3293,18 @@ add_dummies <- function(dir, Log)
 
     check_doc_size <- function()
     {
-        ## Have already checked that inst/doc exists and qpdf can be found
+        ## Have already checked that inst/doc exists
         pdfs <- dir('inst/doc', pattern="\\.pdf",
                     recursive = TRUE, full.names = TRUE)
         pdfs <- setdiff(pdfs, "inst/doc/Rplots.pdf")
         if (length(pdfs)) {
             checkingLog(Log, "sizes of PDF files under 'inst/doc'")
+            if (!nzchar(Sys.which(Sys.getenv("R_QPDF", "qpdf")))) {
+                if (as_cran)
+                    warningLog(Log, "'qpdf' is needed for checks on size reduction of PDFs")
+                return()
+            }
+
             any <- FALSE
             td <- tempfile('pdf')
             dir.create(td)
@@ -3959,7 +3961,7 @@ add_dummies <- function(dir, Log)
         if(length(out) == 1L && startsWith(out, "Note:")) {
             ## This will be a note about symbols.rds not being available
             if(!is_base_pkg) {
-                noteLog(Log)
+                infoLog(Log)
                 printLog0(Log, c(out, "\n"))
             } else resultLog(Log, "OK")
         } else if(length(out)) {
@@ -3968,7 +3970,7 @@ add_dummies <- function(dir, Log)
             haveObjs <- any(grepl("^ *Object", out))
             pat <- paste("possibly from",
                          sQuote("(abort|assert|exit|_exit|_Exit|stop)"))
-            rempat <- "REAL0|COMPLEX0|ddfind|DDVAL|ENSURE_NAMEDMAX|INTERNAL|PRSEEN|SET_PRSEEN|SYMVALUE"
+            rempat <- paste(sprintf("\\b%s\\b", warnNonAPI), collapse = "|")
             if(haveObjs && any(grepl(pat, out)) && pkgname %notin% "parallel")
                 ## need _exit in forked child
                 warningLog(Log)
@@ -3981,9 +3983,13 @@ add_dummies <- function(dir, Log)
                 if (any(grepl("calls", out))) {
                     ep <- Filter(function(x) any(grepl(x, out)),
                                  strsplit(rempat, "\\|")[[1]])
+                    ep <- gsub("\\\\b", "", ep)
                     epq <- paste(sQuote(ep), collapse = ", ")
                     out <- paste(c(out,
-                                   "These entry points may be removed soon:",
+                                   if(length(ep) > 1L)
+                                       "These entry points may be removed soon:"
+                                   else
+                                       "This entry point may be removed soon:",
                                    epq),
                                  collapse = "\n")
                 }
@@ -5533,7 +5539,8 @@ add_dummies <- function(dir, Log)
         db <- if(installed)
                   Rd_db(basename(dir), lib.loc = dirname(dir))
               else
-                  Rd_db(dir = dir)
+                  Rd_db(dir = dir,
+                        stages = c("build", "later", "install"))
         if(!length(db))
             return()
 
@@ -5560,13 +5567,38 @@ add_dummies <- function(dir, Log)
                     .libPaths(c(libdir, libpaths))
                     on.exit(.libPaths(libpaths), add = TRUE)
                 }
-                results1 <- lapply(db,
-                                  function(x)
-                                      tryCatch({
-                                          Rd2HTML(x, out, concordance = TRUE)
-                                          tidy_validate(out, tidy = Tidy)
-                                      },
-                                      error = identity))
+                ## Nowadays we really need to validate the results of
+                ## creating the package HTML refmans via pkg2HTML(),
+                ## which may find additional problems (e.g., duplicated
+                ## anchors). Not sure whether we also want to validate
+                ## the Rd2HTML() outputs for the individual Rd files.
+                results1a <-
+                    lapply(db,
+                           function(x)
+                               tryCatch({
+                                   Rd2HTML(x, out, concordance = TRUE)
+                                   tidy_validate(out, tidy = Tidy)
+                               },
+                               error = identity))
+                results1b <-
+                    tryCatch({
+                        stages <- c("build", "later", "install",
+                                    "render")
+                        if(installed) {
+                            pkg2HTML(basename(dir),
+                                     lib.loc = dirname(dir),
+                                     out = out, stages = stages,
+                                     concordance = TRUE)
+                        } else {
+                            pkg2HTML(dir = dir,
+                                     out = out, stages = stages,
+                                     concordance = TRUE)
+                        }
+                        tidy_validate(out, tidy = Tidy)
+                    },
+                    error = identity)
+                results1 <- c(results1a, list(results1b))
+                
                 ignore <-
                     Sys.getenv("_R_CHECK_RD_VALIDATE_RD2HTML_IGNORE_EMPTY_SPANS_",
                                "true")
@@ -5574,7 +5606,11 @@ add_dummies <- function(dir, Log)
                               "Warning: trimming empty <span>"
                           else
                               character()
-                results1 <- tidy_validate_db(results1, names(db), ignore)
+                results1 <- tidy_validate_db(results1,
+                                             c(names(db),
+                                               paste0(basename(dir),
+                                                      ".html")),
+                                             ignore)
             }
         }
 
@@ -6166,6 +6202,18 @@ add_dummies <- function(dir, Log)
                              ": warning: .* \\[-Wdeprecated-literal-operator\\]"
                              )
 
+                ## <FIXME>
+                ## Support for RcppArmadillo 15 transition.
+                ## Remove eventually ...
+                check_src_flag <-
+                    Sys.getenv("_R_CHECK_SRC_CATCH_ARMADILLO_FALLBACK_COMPILATION_MESSAGE_",
+                               "FALSE")
+                if(config_val_to_logical(check_src_flag))
+                    warn_re <-
+                        c(warn_re,
+                          ": (warning|note): .*Using fallback compilation with Armadillo 14[.]6[.]3")
+                ## </FIXME>
+
                 warn_re <- paste0("(", paste(warn_re, collapse = "|"), ")")
 
                 lines <- grep(warn_re, lines, value = TRUE, useBytes = TRUE)
@@ -6460,8 +6508,8 @@ add_dummies <- function(dir, Log)
                         noteLog(Log,
                                 sprintf("  Specified C++%d: please drop specification unless essential", std))
                     ## since R 4.4.0 C++17 support is required, but
-                    ## C++20/23} support is patchy
-                    } else if (std >= 20) {
+                    ## C++23/26} support is patchy
+                    } else if (std >= 23) {
                          resultLog(Log, "OK")
                          printLog(Log,
                                   sprintf("  Not all R platforms support C++%s\n", std))
@@ -7288,8 +7336,7 @@ add_dummies <- function(dir, Log)
         config_val_to_logical(Sys.getenv("_R_CHECK_PKG_SIZES_", "TRUE")) &&
         nzchar(Sys.which("du"))
     R_check_doc_sizes <-
-        config_val_to_logical(Sys.getenv("_R_CHECK_DOC_SIZES_", "TRUE")) &&
-        nzchar(Sys.which(Sys.getenv("R_QPDF", "qpdf")))
+        config_val_to_logical(Sys.getenv("_R_CHECK_DOC_SIZES_", "TRUE"))
     R_check_doc_sizes2 <-
         config_val_to_logical(Sys.getenv("_R_CHECK_DOC_SIZES2_", "FALSE"))
     R_check_code_assign_to_globalenv <-

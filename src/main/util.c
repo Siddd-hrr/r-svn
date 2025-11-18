@@ -78,18 +78,15 @@ void F77_SUB(rexitc)(char *msg, int *nchar);
 
 /* Many small functions are included from ../include/Rinlinedfuns.h */
 
-int nrows(SEXP s) // ~== NROW(.)  in R
+int nrows(SEXP s) // ~== NROW(.)  in R (except data frames)
 {
     SEXP t;
     if (isVector(s) || isList(s)) {
 	t = getAttrib(s, R_DimSymbol);
 	if (t == R_NilValue) return LENGTH(s);
 	return INTEGER(t)[0];
-    }
-    else if (isDataFrame(s)) {
-	return nrows(CAR(s));
-    }
-    else error(_("object is not a matrix"));
+    } else
+	error(_("object is not a matrix"));
     return -1;
 }
 
@@ -103,11 +100,8 @@ int ncols(SEXP s) // ~== NCOL(.)  in R
 	if (LENGTH(t) >= 2) return INTEGER(t)[1];
 	/* This is a 1D (or possibly 0D array) */
 	return 1;
-    }
-    else if (isDataFrame(s)) {
-	return length(s);
-    }
-    else error(_("object is not a matrix"));
+    } else
+	error(_("object is not a matrix"));
     return -1;/*NOTREACHED*/
 }
 
@@ -546,12 +540,18 @@ attribute_hidden void Rf_check1arg(SEXP arg, SEXP call, const char *formal)
     if (ns > strlen(formal) || strncmp(supplied, formal, ns))
 	errorcall(call, _("supplied argument name '%s' does not match '%s'"),
 		  supplied, formal);
+    if (R_warn_partial_match_args && ns > 0 && ns < strlen(formal)) {
+	SEXP fsym = install(formal);
+	SEXP cond = R_makePartialMatchWarningCondition(call, tag, fsym);
+	PROTECT(cond);
+	R_signalWarningCondition(cond);
+	UNPROTECT(1);
+    }
 }
-
 
 SEXP nthcdr(SEXP s, int n)
 {
-    if (isList(s) || isLanguage(s) || isDataFrame(s) || TYPEOF(s) == DOTSXP ) {
+    if (isPairList(s)) {
 	while( n-- > 0 ) {
 	    if (s == R_NilValue)
 		error(_("'nthcdr' list shorter than %d"), n);
@@ -1160,7 +1160,7 @@ const char *getTZinfo(void)
     // call Sys.timezone()
     SEXP expr = PROTECT(install("Sys.timezone"));
     SEXP call = PROTECT(lang1(expr));
-    SEXP ans = PROTECT(eval(call, R_GlobalEnv));
+    SEXP ans = PROTECT(eval(call, R_BaseEnv));
     if(TYPEOF(ans) == STRSXP && LENGTH(ans) == 1) {
 	SEXP el = STRING_ELT(ans, 0);
 	if (el != NA_STRING) {

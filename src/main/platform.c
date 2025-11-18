@@ -1587,12 +1587,16 @@ attribute_hidden SEXP do_listfiles(SEXP call, SEXP op, SEXP args, SEXP rho)
     bool idirs = asBool2(CAR(args), call); args = CDR(args);
 //    if (idirs == NA_LOGICAL)
 //	error(_("invalid '%s' argument"), "include.dirs");
-    int nodots = asLogical(CAR(args));
+    int nodots = asLogical(CAR(args)); args = CDR(args);
     if (nodots == NA_LOGICAL)
 	error(_("invalid '%s' argument"), "no..");
+    int fixed = asLogical(CAR(args));
+    if (nodots == NA_LOGICAL)
+        error(_("invalid '%s' argument"), "fixed");
 
     int flags = REG_EXTENDED;
     if (igcase) flags |= REG_ICASE;
+    if (fixed)  flags |= REG_LITERAL;
     regex_t reg;
     if (pattern && tre_regcomp(&reg, translateChar(STRING_ELT(p, 0)), flags))
 	error(_("invalid 'pattern' regular expression"));
@@ -1622,7 +1626,7 @@ attribute_hidden SEXP do_listfiles(SEXP call, SEXP op, SEXP args, SEXP rho)
     search_cleanup(&pb);
     REPROTECT(ans = lengthgets(ans, count), idx);
     if (pattern) tre_regfree(&reg);
-    ssort(STRING_PTR(ans), count);
+    ssort(STRING_PTR(ans), count); /* STRING_PTR is safe here */
     UNPROTECT(1);
     return ans;
 }
@@ -1718,7 +1722,7 @@ attribute_hidden SEXP do_listdirs(SEXP call, SEXP op, SEXP args, SEXP rho)
     endcontext(&cntxt);
     search_cleanup(&pb);
     REPROTECT(ans = lengthgets(ans, count), idx);
-    ssort(STRING_PTR(ans), count);
+    ssort(STRING_PTR(ans), count); /* STRING_PTR is safe here */
     UNPROTECT(1);
     return ans;
 }
@@ -1743,13 +1747,17 @@ static /*attribute_hidden*/ bool R_WFileExists(const wchar_t *path)
 attribute_hidden SEXP do_fileexists(SEXP call, SEXP op, SEXP args, SEXP rho)
 {
     SEXP file, ans;
-    int i, nfile;
+    int i, nfile, ic = 16;
     checkArity(op, args);
     if (!isString(file = CAR(args)))
 	error(_("invalid '%s' argument"), "file");
     nfile = LENGTH(file);
     ans = PROTECT(allocVector(LGLSXP, nfile));
     for (i = 0; i < nfile; i++) {
+	if (!(--ic)) {
+	    R_CheckUserInterrupt();
+	    ic = 16;
+	}
 	LOGICAL(ans)[i] = 0;
 	if (STRING_ELT(file, i) != NA_STRING) {
 	    /* documented to silently report false for paths that would be too

@@ -67,6 +67,11 @@ foo(\var{x}, \var{y}, ...)
 
   Georgi Boshnakov's example of generated paragraphs:
   \Sexpr[results=rd]{paste(letters[1:3], collapse="\n\n")}
+
+  \Sexpr[results=verbatim]{"a
+    b\n    c"}
+
+  \Sexpr[results=rd]{tools::toRd(bibentry("Misc", author="R", year=2025, title="$t$"))}
 }
 \value{
   [NULL]\cr\cr\dots

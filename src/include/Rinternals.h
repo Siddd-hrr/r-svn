@@ -1172,12 +1172,6 @@ SEXP R_altrep_data1(SEXP x);
 SEXP R_altrep_data2(SEXP x);
 void R_set_altrep_data1(SEXP x, SEXP v);
 void R_set_altrep_data2(SEXP x, SEXP v);
-
-int *LOGICAL0(SEXP x);
-int *INTEGER0(SEXP x);
-double *REAL0(SEXP x);
-Rcomplex *COMPLEX0(SEXP x);
-Rbyte *RAW0(SEXP x);
 #endif
 
 int (ALTREP)(SEXP x);
@@ -1277,8 +1271,7 @@ void SET_PRCODE(SEXP x, SEXP v);
 
 void *(STDVEC_DATAPTR)(SEXP x); // used by stringfish vctrs vroom
 
-/* Growable vector support */ // formerly used by multbxxc
-int (IS_GROWABLE)(SEXP x);
+/* Growable vector support */ // still used by a few packages
 void (SET_GROWABLE_BIT)(SEXP x);
 
 // no longer used

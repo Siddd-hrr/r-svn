@@ -268,8 +268,10 @@ function(x, i, j, value)
         value <- rep_len(value, length(p))
         if(j == "role")
             value <- lapply(value, .canonicalize_person_role)
-        for(i in p)
-            y[[i]] <- .person_elt_fld_gets(y[[i]], j, value[[i]])            
+        for(i in seq_along(p)) {
+            k <- p[i]
+            y[[k]] <- .person_elt_fld_gets(y[[k]], j, value[[i]])
+        }
     }
     class(y) <- class(x)
     y
@@ -737,6 +739,10 @@ function(bibtype, textVersion = NULL, header = NULL, footer = NULL, key = NULL,
 	}
 	if(any(!pos)) {
             for(i in which(!pos)) {
+                if((fields[i] %in%
+                    bibentry_field_names_organization_like) &&
+                   inherits(rval[[i]], "person"))
+                    next
                 s <- trimws(as.character(rval[[i]]))
                 ## <NOTE>
                 ## Further above we did
@@ -811,13 +817,16 @@ bibentry_attribute_names <-
 bibentry_list_attribute_names <-
     c("mheader", "mfooter")
 
+bibentry_field_names_organization_like <-
+    c("institution", "organization", "publisher", "school")
+
 .bibentry_get_key <-
 function(x)
 {
     if(!length(x)) return(character())
     keys <- lapply(unclass(x), attr, "key")
     keys[!lengths(keys)] <- ""
-    unlist(keys)
+    unlist(keys, use.names = FALSE)
 }
 
 .bibentry_names_or_keys <-
@@ -891,14 +900,15 @@ function(x, i, j, value)
         if(j == "bibtype")
             value <- .bibentry_canonicalize_bibtype_value(value)
         a <- (j %in% bibentry_attribute_names)
-        for(i in p) {
-            y[[i]] <- .bibentry_elt_fld_gets(y[[i]], j, value[[i]], a)
+        for(i in seq_along(p)) {
+            k <- p[i]
+            y[[k]] <- .bibentry_elt_fld_gets(y[[k]], j, value[[i]], a)
         }
     }
     class(y) <- class(x)
     y
 }
-    
+
 `[[<-.bibentry` <-
 function(x, i, j, value)
 {
@@ -952,6 +962,9 @@ function(x, i = NULL)
                 NULL
             else if(j %in% c("author", "editor"))
                 as.person(v)
+            else if((j %in% bibentry_field_names_organization_like) &&
+                    inherits(v, "person"))
+                v
             else
                 paste(v)
     }
@@ -1406,6 +1419,12 @@ function(object, escape = FALSE, ...)
             object$author <- format_author(object$author)
         if("editor" %in% names(object))
             object$editor <- format_author(object$editor)
+
+        for(n in intersect(names(object),
+                           bibentry_field_names_organization_like)) {
+            if(inherits(o <- object[[n]], "person"))
+                object[[n]] <- o$given
+        }
 
         rval <- c(rval,
                   vapply(names(object),

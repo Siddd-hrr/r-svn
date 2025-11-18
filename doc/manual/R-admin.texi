@@ -456,9 +456,9 @@ make pdf      @r{to create PDF versions}
 make info     @r{to create info files (not @samp{refman} nor @samp{fullrefman}).}
 @end example
 
-@c texi2any from Feb 2016.
+@c texi2any from July 2021.
 You will not be able to build any of these unless you have
-@command{texi2any} version 6.1 or later installed, and for PDF you must
+@command{texi2any} version 6.8 or later installed, and for PDF you must
 have @command{texi2dvi} and @file{texinfo.tex} installed (which are part
 of the @acronym{GNU} @I{Texinfo} distribution but are, especially
 @file{texinfo.tex}, often made part of the @TeX{} package @pkg{texinfo} in
@@ -1098,9 +1098,9 @@ if you want to specify a non-default standard use something like
 Compiling @R{} requires C99 or later: C11 and C17 are minor updates, but
 the substantial update `C23' (finally published in October 2024) is also
 supported for recent versions of GCC@footnote{At least 13--15: 15
-defaults to C23},  @command{clang}@footnote{including @I{LLVM} clang 18--20
-and Apple clang 15--17.} and Intel @command{icx}.  @R{} 4.5.0 defaults
-to C23 if supported by the chosen compiler.
+defaults to C23}, @command{clang}@footnote{including @I{LLVM} clang
+18--20 and Apple clang 15--17.} and Intel @command{icx}.  @R{} 4.5.0 and
+later default to C23 if supported by the chosen compiler.
 
 As from @R{} 4.3.0 there is support for packages to indicate their
 preferred C version.  Macros @code{CC17}, @code{C17FLAGS}, @code{CC23}
@@ -2221,18 +2221,18 @@ So for example you could select a specific @I{LLVM}
 SDK=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
 CC = /usr/local/clang/bin/clang -isysroot $(SDK)
 CXX = /usr/local/clang/bin/clang++ -isysroot $(SDK)
-CXX11 = $CXX
-CXX14 = $CXX
-CXX17 = $CXX
-CXX20 = $CXX
-CXX23 = $CXX
+CXX11 = $(CXX)
+CXX14 = $(CXX)
+CXX17 = $(CXX)
+CXX20 = $(CXX)
+CXX23 = $(CXX)
 CFLAGS = -g -O2 -Wall -pedantic -Wconversion -Wno-sign-conversion
 CXXFLAGS = -g -O2 -Wall -pedantic -Wconversion -Wno-sign-conversion
-CXX11FLAGS = $CXXFLAGS
-CXX14FLAGS = $CXXFLAGS
-CXX17FLAGS = $CXXFLAGS
-CXX20FLAGS = $CXXFLAGS
-CXX23FLAGS = $CXXFLAGS
+CXX11FLAGS = $(CXXFLAGS)
+CXX14FLAGS = $(CXXFLAGS)
+CXX17FLAGS = $(CXXFLAGS)
+CXX20FLAGS = $(CXXFLAGS)
+CXX23FLAGS = $(CXXFLAGS)
 @end example
 @noindent
 (the current @I{SDK} can be found by running @command{xcrun -show-sdk-path})
@@ -3251,7 +3251,7 @@ looking in @file{/usr/xpg4/bin} which is used on some commercial
 Unixes).
 
 You will not be able to build most of the manuals unless you have
-@command{texi2any} version 6.1 or later installed (which requires
+@command{texi2any} version 6.8 or later installed (which requires
 @command{perl}), and if not most of the @HTML{} manuals will be linked
 to a version on @acronym{CRAN}. To make PDF versions of the manuals you
 will also need file @file{texinfo.tex} installed (which is part of the
@@ -4028,7 +4028,7 @@ Note though that any dynamic libraries the replacement links to will
 need to be found by the linker: this may need the library path to be
 changed in @file{@var{R_HOME}/etc/ldpaths}.
 
-This because less easy in 2025: swapping the BLAS is only possible to
+This became less easy in 2025: swapping the BLAS is only possible to
 one compatible with the LAPACK in use.  For the LAPACK shipped with @R{}
 4.5.0 that means one containing @code{dgemmtr} and @code{zgemmtr}, or
 configuring @R{} with @option{--with-2025blas}.

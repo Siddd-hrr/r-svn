@@ -1,6 +1,6 @@
 % File src/library/datasets/man/InsectSprays.Rd
 % Part of the R package, https://www.R-project.org
-% Copyright 1995-2007 R Core Team
+% Copyright 1995-2025 R Core Team
 % Distributed under GPL 2 or later
 
 \name{InsectSprays}
@@ -20,13 +20,10 @@
   }
 }
 \source{
-  Beall, G., (1942)
-  The Transformation of data from entomological field experiments,
-  \emph{Biometrika}, \bold{29}, 243--262.
+  \bibcitet{R:Beall:1942}.
 }
 \references{
-  McNeil, D. (1977) \emph{Interactive Data Analysis}.
-  New York: Wiley.
+  \bibshow{*, R:McNeil:1977}
 }
 \examples{
 require(stats); require(graphics)

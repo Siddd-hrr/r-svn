@@ -343,6 +343,11 @@ function(dir = NULL, files = NULL,
             readRDS(file.path(dirname(db_file), "paths.rds"))
         ## Files in the db in need of updating:
         indf <- (files %in% db_names) & file_test("-nt", files, db_file)
+        ## FIXME: should also re-process dynamic pages:
+        ## if (length(stages)) {
+        ##     dynamic <- vapply(db, function(rd) any(getDynamicFlags(rd)[stages]), NA)
+        ##     indf <- indf | (files %in% db_names[dynamic])
+        ## }
         ## Also files not in the db:
         indf <- indf | (files %notin% db_names)
 
@@ -578,6 +583,34 @@ function(x, predicate)
     recurse(x)
 }
 
+### * .Rd_drop_nodes_from_macros
+
+.Rd_drop_nodes_from_macros <-
+function(x, macros)
+{
+    recurse <- function(e) {
+        if(is.list(e)) {
+            i <- vapply(e,
+                        function(z) {
+                            (!is.null(a <- attr(z, "Rd_tag")) &&
+                             (a == "USERMACRO") &&
+                             !is.null(a <- attr(z, "macro")) &&
+                             (a %in% macros))
+                        },
+                        NA)
+            if(any(i)) {
+                i <- which(i)
+                e <- e[-c(i, i + 1L)]
+            }
+            a <- attributes(e)
+            e <- lapply(e, recurse)
+            attributes(e) <- a
+        }
+        e
+    }
+    recurse(x)
+}
+    
 ### * .Rd_find_nodes_with_tags
 
 .Rd_find_nodes_with_tags <-
@@ -604,6 +637,32 @@ function(x, predicate)
         if(predicate(e)) 
             nodes <<- c(nodes, list(e))
         if(is.list(e)) 
+            lapply(e, recurse)
+    }
+    lapply(x, recurse)
+    nodes
+}
+
+### * .Rd_find_nodes_from_macros
+
+.Rd_find_nodes_from_macros <-
+function(x, macros)
+{
+    nodes <- list()
+    recurse <- function(e) {
+        i <- vapply(e,
+                    function(z) {
+                        (!is.null(a <- attr(z, "Rd_tag")) &&
+                         (a == "USERMACRO") &&
+                         !is.null(a <- attr(z, "macro")) &&
+                         (a %in% macros))
+                    },
+                    NA)
+        if(any(i)) {
+            i <- which(i)
+            nodes <<- c(nodes, e[i + 1L])
+        }
+        if(is.list(e))
             lapply(e, recurse)
     }
     lapply(x, recurse)
@@ -871,7 +930,7 @@ function(x)
             } else c("", "")
             out <<- rbind(out, val)
         } else if(identical(tag, "\\linkS4class")) {
-            arg <- as.character(e[[1L]])
+            arg <- if (length(e)) as.character(e[[1L]]) else ""
             opt <- attr(e, "Rd_option")
             val <- if(is.null(opt))
                        c(arg, sprintf("=%s-class", arg))

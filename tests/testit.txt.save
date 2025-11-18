@@ -51,7 +51,8 @@ _V_a_l_u_e:
 
      Yihui Xie's example:
 
-     def ghi
+     def
+          ghi
 
      -
 
@@ -67,6 +68,10 @@ _V_a_l_u_e:
      b
 
      c
+
+     [1] "a\n    b\n    c"
+
+     R (2025). "t."
 
 \_t_a_b_u_l_a_r:
 

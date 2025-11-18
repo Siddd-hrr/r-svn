@@ -349,21 +349,23 @@ function(file, pdf = FALSE, clean = FALSE, quiet = TRUE,
         on.exit(Sys.unsetenv("TEXINDY"), add = TRUE)
         opt_pdf <- if(pdf) "--pdf" else ""
         opt_quiet <- if(quiet) "--quiet" else ""
-        opt_extra <- "--max-iterations=20"
-        out <- .system_with_capture(texi2dvi, "--help")
+        opt_extra <- ""
 
+        ## the current heuristics for finding error messages in log files
+        ## have better coverage with the default '!' error indicator, but
+        ## texi2dvi enables the file:line:error style, so:
+        out <- .system_with_capture(texi2dvi, "--help")
         if(length(grep("--no-line-error", out$stdout)))
             opt_extra <- "--no-line-error"
-        ## (Maybe change eventually: the current heuristics for finding
-        ## error messages in log files should work for both regular and
-        ## file line error indicators.)
 
         ## and work around a bug in texi2dvi
         ## https://stat.ethz.ch/pipermail/r-devel/2011-March/060262.html
         ## That has [A-Za-z], earlier versions [A-z], both of which may be
         ## invalid in some locales.
+        ## FIXME: This workaround should be obsolete with Texinfo 5.0.
         env0 <- "LC_COLLATE=C"
         ## texi2dvi, at least on macOS (4.8) does not accept TMPDIR with spaces.
+        ## FIXME: This workaround should be obsolete with Texinfo 6.3.
         if (grepl(" ", Sys.getenv("TMPDIR")))
             env0 <- paste(env0,  "TMPDIR=/tmp")
         out <- .system_with_capture(texi2dvi,
@@ -379,6 +381,7 @@ function(file, pdf = FALSE, clean = FALSE, quiet = TRUE,
         ## Try to catch and correct cases seen on CRAN ...
         ## (Note that texi2dvi may have been run quietly, in which case
         ## diagnostics will only be in the log file.)
+        ## FIXME: This workaround should be obsolete with Texinfo 6.7.
         if(out$status &&
            file_test("-f", log) &&
            any(grepl("(Rerun to get|biblatex.*\\(re\\)run)",
@@ -445,15 +448,11 @@ function(file, pdf = FALSE, clean = FALSE, quiet = TRUE,
 
         ## look for MiKTeX (which this almost certainly is)
         ## http://docs.miktex.org/manual/texify.html
-        ver <- system(paste(shQuote(texi2dvi), "--version"), intern = TRUE)
-        if(length(grep("MiKTeX", ver[1L]))) {
-            extra <- "--max-iterations=20"
-            ## setting TEXINPUTS via -I is long obsolete, EnvVars are respected
-            ## (<https://docs.miktex.org/manual/localadditions.html>)
-            ##   texinputs <- c(texinputs, Rtexinputs, Rbstinputs)
-            ##   paths <- paste ("-I", shQuote(texinputs))
-            ##   extra <- paste(extra, paste(paths, collapse = " "))
-        }
+        ## ver <- system(paste(shQuote(texi2dvi), "--version"), intern = TRUE)
+        ## if(length(grep("MiKTeX", ver[1L]))) {
+        ##     extra <- "--max-iterations=20"
+        ## }
+
         ## 'file' could be a file path
         base <- basename(file_path_sans_ext(file))
         ## this only gives a failure in some cases, e.g. not for bibtex errors.
@@ -628,12 +627,8 @@ function(year)
 
 .R_top_srcdir_from_Rd <-
 function() {
-    filebase <-
-        file_path_sans_ext(system.file("help", "tools.rdb",
-                                       package = "tools"))
-    path <- attr(fetchRdDB(filebase, "QC"), "Rdfile")
-    ## We could use 5 dirname() calls, but perhaps more easily:
-    substr(path, 1L, nchar(path) - 28L)
+    attr(readRDS(system.file("help", "paths.rds", package = "tools")),
+         "top")
 }
 
 ## Unfortunately,
@@ -1020,7 +1015,8 @@ function(con, n = 4L)
     ## Try matching both the regular error indicator ('!') as well as
     ## the file line error indicator ('file:line:').
     pos <- grep("(^! |^!pdfTeX error:|:[0123456789]+:.*[Ee]rror)", lines)
-    ## unfortunately that was too general and caught false positives
+    ## the latter will miss some error messages like "Missing $ inserted"
+    ## (a more general pattern caught false positives)
     ## Errors are typically of the form
     ## ! LaTeX Error:
     ## !pdfTeX error:
@@ -2076,8 +2072,8 @@ function()
 ### ** .package_apply
 
 .package_apply <-
-function(packages = NULL, FUN, ..., pattern = NULL, verbose = TRUE,
-         Ncpus = getOption("Ncpus", 1L))
+function(packages = NULL, FUN, ..., pattern = NULL, 
+         verbose = interactive(), Ncpus = .Ncpus_default())
 {
     ## Apply FUN and extra '...' args to all given packages.
     ## The default corresponds to all installed packages with high
@@ -2089,30 +2085,8 @@ function(packages = NULL, FUN, ..., pattern = NULL, verbose = TRUE,
     if(!is.null(pattern))
         packages <- grepv(pattern, packages)
 
-    ## Keep in sync with .unpacked_source_repository_apply().
-    ## <FIXME>
-    ## Should we really catch errors?
-    one <- function(p) {
-        if(verbose)
-            message(sprintf("processing %s", p))
-        tryCatch(FUN(p, ...), error = identity)
-    }
-    ## </FIXME>
-
-    ## Would be good to have a common wrapper ...
-    if(Ncpus > 1L) {
-        if(.Platform$OS.type != "windows") {
-            out <- parallel::mclapply(packages, one, mc.cores = Ncpus)
-        } else {
-            cl <- parallel::makeCluster(Ncpus)
-            args <- list(FUN, ...)      # Eval promises.
-            out <- parallel::parLapply(cl, packages, one)
-            parallel::stopCluster(cl)
-        }
-    } else {
-        out <- lapply(packages, one)
-    }
-
+    out <- .parLapply_on_strings(packages, FUN, ...,
+                                 verbose = verbose, Ncpus = Ncpus)
     names(out) <- packages
     out
 }
@@ -2238,6 +2212,39 @@ function(ifile, ofile)
                                "--email-obfuscation=references",
                                "-o", shQuote(ofile)))
 }
+
+### ** .parLapply_on_strings
+
+.parLapply_on_strings <-
+function(X, FUN, ..., 
+         verbose = interactive(), Ncpus = .Ncpus_default(),
+         trafo = identity)
+{
+    one <- function(e) {
+        if(verbose)
+            message(sprintf("processing %s", trafo(e)))
+        tryCatch(FUN(e, ...), error = identity)
+    }
+
+    if(Ncpus > 1L) {
+        if(.Platform$OS.type != "windows") {
+            out <- parallel::mclapply(X, one, mc.cores = Ncpus)
+        } else {
+            cl <- parallel::makeCluster(Ncpus)
+            args <- list(FUN, ...)      # Eval promises.
+            out <- parallel::parLapply(cl, X, one)
+            parallel::stopCluster(cl)
+        }
+    } else {
+        out <- lapply(X, one)
+    }
+
+    out
+}
+    
+.Ncpus_default <-
+function()
+    getOption("Ncpus", 1L)
 
 ### ** .parse_code_file
 
@@ -2379,7 +2386,7 @@ function(dfile, keep.white = .keep_white_description_fields)
 }
 
 .write_description <-
-function(x, dfile)
+function(x, dfile, keep.white = .keep_white_description_fields)
 {
     ## Invert how .read_description() handles package encodings.
     if(!is.na(encoding <- x["Encoding"])) {
@@ -2414,20 +2421,17 @@ function(x, dfile)
     ## Hence, when we have a declared non-UTF-8 encoding, we convert
     ## to UTF-8 before formatting, and convert back to the declared
     ## encoding when writing out.
+    keep.white <- unique(c(keep.white, "Maintainer", "BugReports"))
     if(!is.na(encoding) && (encoding != "UTF-8")) {
         x <- iconv(x, from = encoding, to = "UTF-8")
         tfile <- tempfile()
-        write.dcf(rbind(x), tfile,
-                  keep.white = c(.keep_white_description_fields,
-                                 "Maintainer", "BugReports"),
+        write.dcf(rbind(x), tfile, keep.white = keep.white,
                   useBytes = TRUE)
         writeLines(iconv(readLines(tfile),
                          from = "UTF-8", to = encoding),
                    dfile, useBytes = TRUE)
     } else {
-        write.dcf(rbind(x), dfile,
-                  keep.white = c(.keep_white_description_fields,
-                                 "Maintainer", "BugReports"),
+        write.dcf(rbind(x), dfile, keep.white = keep.white,
                   useBytes = TRUE)
     }
 }
@@ -2457,18 +2461,35 @@ function(x)
 ### ** .replace_chars_by_hex_subs
 
 .replace_chars_by_hex_subs <-
-function(x, re) {
-    char_to_hex_sub <- function(s) {
-        paste0("<", charToRaw(s), ">", collapse = "")
-    }
+function(x, re, style = "html") {
+    char_to_hex_sub <-
+        switch(style,
+               "html" = function(s) paste0("<", charToRaw(s), ">", collapse = ""),
+               "texinfo" = function(s) sprintf("_%04x", utf8ToInt(s)))
     vapply(strsplit(x, ""),
            function(e) {
                pos <- grep(re, e, perl = TRUE)
                if(length(pos))
-                   e[pos] <- vapply(e[pos], char_to_hex_sub, "")
+                   e[pos] <- vapply(e[pos], char_to_hex_sub, "", USE.NAMES = FALSE)
                paste(e, collapse = "")
            },
            "")
+}
+
+### ** .texinfo_node_to_id
+
+.texinfo_node_to_id <-
+function(x)
+{
+    ## Convert an @-expanded Texinfo node name to its XHTML identifier as described at
+    ## <https://www.gnu.org/software/texinfo/manual/texinfo/html_node/HTML-Xref-Node-Name-Expansion.html>
+    res <- gsub("\\s+", " ", trimws(x))
+    ASCII_letters_and_digits <-
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    re <- paste0("[^ ", ASCII_letters_and_digits, "]")
+    res <- .replace_chars_by_hex_subs(res, re, style = "texinfo")
+    res <- chartr(" ", "-", res)
+    if (grepl("^[_0-9]", res)) paste0("g_t", res) else res
 }
 
 ### ** .source_assignments
@@ -2662,8 +2683,8 @@ function(expr)
 ### ** .unpacked_source_repository_apply
 
 .unpacked_source_repository_apply <-
-function(dir, FUN, ..., pattern = NULL, verbose = FALSE,
-         Ncpus = getOption("Ncpus", 1L))
+function(dir, FUN, ..., pattern = NULL, 
+         verbose = interactive(), Ncpus = .Ncpus_default())
 {
     dir <- file_path_as_absolute(dir)
 
@@ -2680,29 +2701,9 @@ function(dir, FUN, ..., pattern = NULL, verbose = FALSE,
         dfiles <- dfiles[grepl(pattern, basename(dirname(dfiles)))]
     paths <- dirname(dfiles)
 
-    ## Keep in sync with .package_apply().
-    ## <FIXME>
-    ## Should we really catch errors?
-    one <- function(p) {
-        if(verbose)
-            message(sprintf("processing %s", basename(p)))
-        tryCatch(FUN(p, ...), error = identity)
-    }
-    ## </FIXME>
-
-    ## Would be good to have a common wrapper ...
-    if(Ncpus > 1L) {
-        if(.Platform$OS.type != "windows") {
-            out <- parallel::mclapply(paths, one, mc.cores = Ncpus)
-        } else {
-            cl <- parallel::makeCluster(Ncpus)
-            args <- list(FUN, ...)      # Eval promises.
-            out <- parallel::parLapply(cl, paths, one)
-            parallel::stopCluster(cl)
-        }
-    } else {
-        out <- lapply(paths, one)
-    }
+    out <- .parLapply_on_strings(paths, FUN, ...,
+                                 verbose = verbose, Ncpus = Ncpus,
+                                 trafo = basename)
 
     names(out) <- basename(paths)
     out
@@ -2868,7 +2869,7 @@ function(text)
             else paste0(toupper(x1), tolower(substring(x, 2L)))
         }
         if(is.na(x)) return(NA_character_)
-        xx <- .Call(C_splitString, x, ' -/"()\n\t')
+        xx <- .Call(C_splitString, x, ' -/"()\n\t,')
         ## for 'alone' we could insist on that exact capitalization
         alone <- xx %in% c(alone, either)
         alone <- alone | grepl("^'.*'$", xx)

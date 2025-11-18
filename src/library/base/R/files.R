@@ -40,6 +40,12 @@ file.show <-
               delete.file = FALSE, pager = getOption("pager"), encoding = "")
 {
     files <- path.expand(c(...))
+    ## skip directories
+    didx <- which(file.info(files)$isdir)
+    if (length(didx)) {
+        warning("directories are ignored")
+        files <- files[-didx]
+    }
     nfiles <- length(files)
     if(nfiles == 0L)
         return(invisible(NULL))
@@ -50,10 +56,13 @@ file.show <-
         for(i in seq_along(files)) {
             f <- files[i]
             tf <- tempfile()
-            tmp <- readLines(f, warn = FALSE)
+            tmp <- list(readBin(f, "raw", file.size(f)))
             tmp2 <- try(iconv(tmp, encoding, "", "byte"))
             if(inherits(tmp2, "try-error")) file.copy(f, tf)
-            else writeLines(tmp2, tf)
+            else {
+                tmp2 <- strsplit(tmp2, "\r\n?|\n", perl = TRUE)[[1L]]
+                writeLines(tmp2, tf)
+            }
             files[i] <- tf
             if(delete.file) unlink(f)
         }
@@ -77,9 +86,11 @@ file.rename <- function(from, to)
 list.files <-
     function(path = ".", pattern = NULL, all.files = FALSE,
              full.names = FALSE, recursive = FALSE,
-             ignore.case = FALSE, include.dirs = FALSE, no.. = FALSE)
+             ignore.case = FALSE, include.dirs = FALSE, no.. = FALSE,
+             fixed = FALSE)
     .Internal(list.files(path, pattern, all.files, full.names,
-			 recursive, ignore.case, include.dirs, no..))
+			 recursive, ignore.case, include.dirs, no..,
+			 fixed))
 
 dir <- list.files
 

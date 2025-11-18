@@ -1,7 +1,7 @@
 #  File src/library/base/R/all.equal.R
 #  Part of the R package, https://www.R-project.org
 #
-#  Copyright (C) 1995-2024 The R Core Team
+#  Copyright (C) 1995-2025 The R Core Team
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -80,7 +80,11 @@ all.equal.default <- function(target, current, ..., check.class = TRUE)
 all.equal.function <- function(target, current, check.environment = TRUE, ...)
 {
     msg <- all.equal.language(target, current, ...)
-    if(check.environment) {
+    if (is.null(current))
+        ## need to handle separately since environment(NULL) is the
+        ## current evaluation environment
+        msg
+    else if(check.environment) {
         ## pre-check w/ identical(), for speed & against infinite recursion:
         ee <- identical(environment(target),
                         environment(current), ignore.environment=FALSE)
@@ -466,7 +470,9 @@ attr.all.equal <- function(target, current, ...,
     if(check.names) {
         nx <- names(target)
         ny <- names(current)
-        if((lx <- length(nx)) | (ly <- length(ny))) {
+        lx <- length(nx)
+        ly <- length(ny)
+        if(lx || ly) {
             ## names() treated now; hence NOT with attributes()
             ax$names <- ay$names <- NULL
             if(lx && ly) {

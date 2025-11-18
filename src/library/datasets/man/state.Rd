@@ -1,12 +1,11 @@
 % File src/library/datasets/man/state.Rd
 % Part of the R package, https://www.R-project.org
-% Copyright 1995-2022 R Core Team
+% Copyright 1995-2025 R Core Team
 % Distributed under GPL 2 or later
 
 \name{state}
 \title{US State Facts and Figures}
 \docType{data}
-\encoding{UTF-8}
 \alias{state}
 \alias{state.abb}
 \alias{state.area}
@@ -71,16 +70,10 @@ state.x77
   \eqn{2.589988110336 km^2}.
 }
 \source{
-  U.S. Department of Commerce, Bureau of the Census (1977)
-  \emph{Statistical Abstract of the United States}.
-
-  U.S. Department of Commerce, Bureau of the Census (1977)
-  \emph{County and City Data Book}.
+  \bibshow{R:USDOC:1977:a, R:USDOC:1977:b}
 }
 \references{
-  Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988)
-  \emph{The New S Language}.
-  Wadsworth & Brooks/Cole.
+  \bibshow{R:Becker+Chambers+Wilks:1988}
 }
 \examples{
 (dst <- dxy <- data.frame(state.center, row.names=state.abb))

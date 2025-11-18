@@ -37,7 +37,8 @@ isNamespaceLoaded(name)
     recorded in object \code{.Depends} in the package.}
   \item{package}{string naming the package/name space to load.}
   \item{lib.loc}{character vector specifying library search path (the location
-    of \R library trees to search through.}
+    of \R library trees to search through. Only used if the name space
+    is not already loaded.}
   \item{keep.source}{now ignored except during package installation.}
   \item{keep.parse.data}{ignored except during package installation.}
   \item{partial}{logical; if true, stop just after loading code.}
@@ -59,11 +60,19 @@ isNamespaceLoaded(name)
 
   \code{loadNamespace} loads the specified name space and registers it in
   an internal data base.  A request to load a name space when one of that
-  name is already loaded has no effect.  \code{versionCheck} allows to
-  require a namespace with restricted (e.g., minimal or maximal) package
-  version (\code{\link{packageVersion}()}).  If the version check fails,
-  \code{loadNamespace()} signals an error, whereas \code{requireNamespace()}
-  returns \code{FALSE} after showing \code{loadNamespace}'s error message.
+  name is already loaded has no effect and all other arguments
+  except \code{versionCheck} are ignored.
+  In \R <= 4.5.z, an invalid version specification, e.g.,
+  \code{versionCheck = "0.3.0"} would often pass unnoticed and be
+  misinterpreted as non-availability of the \code{package}; now an error is
+  signalled.
+
+  Argument \code{versionCheck} allows to require a namespace with
+  restricted (e.g., minimal or maximal) package version
+  (\code{\link{packageVersion}()}).  If the version check fails,
+  \code{loadNamespace()} signals an error, whereas
+  \code{requireNamespace()} returns \code{FALSE} after showing
+  \code{loadNamespace}'s error message.
 
   Further arguments have the same
   meaning as the corresponding arguments to \code{\link{library}}, whose
@@ -139,7 +148,7 @@ isNamespaceLoaded(name)
   further \code{\link{environment}}.
 }
 \references{
-  The \sQuote{Writing R Extensions} manual, section \dQuote{Package namespaces}.
+  Section \manual{R-exts}{Package namespaces}.
 }
 \author{Luke Tierney and R-core}
 \examples{

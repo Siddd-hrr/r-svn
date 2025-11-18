@@ -7,13 +7,13 @@ assertErrV  <- function(...) tools::assertError  (..., verbose=TRUE)
 assertWarnV <- function(...) tools::assertWarning(..., verbose=TRUE)
 `%||%` <- function (L, R)  if(is.null(L)) R else L
 ##' get value of `expr` and keep warning as attribute (if there is one)
-getVaW <- function(expr) {
+getVaW <- function(expr, obj=FALSE) {
     W <- NULL
     withCallingHandlers(val <- expr,
                         warning = function(w) {
-                            W <<- conditionMessage(w)
+                            W <<- if(obj) w else conditionMessage(w)
                             invokeRestart("muffleWarning") })
-    structure(val, warning = W)
+    structure(val %||% quote(._NULL_()), warning = W) # NULL cannot have attr.
 }
 options(nwarnings = 10000, # (rather than just 50)
         warn = 2, # only caught or asserted warnings
@@ -2004,7 +2004,9 @@ assertErrV(     ts(1:711, frequency=2*pi, start = 1, end = 114, ts.eps = 1e-6) )
 
 
 ## match(<Date>, <character>) and vice versa
+op <- options(warn = 1)# PR#18931 - does warn for 32-bit time_t
 date_seq <- seq(as.Date("1705-01-01"), as.Date("2024-12-31"), by="days")
+options(op)
 dt1 <- as.Date("2024-05-01")
 dt3 <- c(dt1, as.Date(c("1800-01-01", "2025-02-02")))
 system.time({
@@ -2053,8 +2055,8 @@ hist(1:100, breaks = 2^(0:8), log = "x")
 
 
 ## subassigning from real to complex keeping zero imaginary part
-ll <- list(NA, 0L, NA_integer_, 0, NA_real_, NaN, -Inf, Inf,
-           0i, NA_complex_)
+ll <- as.list(c(NA, 0L, NA_integer_, 0, NA_real_, NaN, -Inf, Inf,
+                complex(real = 2:-1, imaginary = c(-Inf, 0:1, Inf)), NA_complex_))
 rr <- vapply(ll, Re, 0)
 ii <- vapply(ll, Im, 0) # all 0, but the very last
 chk <- function (x, y = as.vector(x)) stopifnot(identical(Re(y), rr),
@@ -2094,6 +2096,261 @@ stopifnot(exprs = {
 })
 ## warning msg confusingly had '...' instead of 'log'
 
+
+## requireNamespace(versionCheck) for loaded namespace #PR18255
+versionCheck <- list(op = ">", version = getRversion())
+           requireNamespace("stats", versionCheck = versionCheck) # did not show error
+stopifnot(!requireNamespace("stats", versionCheck = versionCheck, quietly = TRUE))
+## *not* successful, when versionCheck fails
+
+
+## reading an empty file via gzcon() returned non-deterministic non-empty
+## content (PR#18887)
+fempty <- tempfile(tmpdir = getwd())
+cat("", file=fempty)
+gcon <- gzcon(file(fempty, "rb"))
+lines2 <- readLines(gcon)
+close(gcon)
+stopifnot(identical(lines2, character(0)))
+gcon <- gzfile(fempty, "rb") ## also test gzfile
+lines <- readLines(gcon)
+close(gcon)
+stopifnot(identical(lines, character(0)))
+unlink(fempty)
+
+
+## concatenated gzipped streams were not supported by gzcon
+fconcat <- tempfile(tmpdir = getwd())
+gcon <- gzfile(fconcat, "w")
+cat("Hello ", file=gcon)
+close(gcon)
+gcon <- gzfile(fconcat, "a")
+cat("World\n", file=gcon)
+close(gcon)
+gcon <- gzcon(file(fconcat, "rb"))
+lines2 <- readLines(gcon)
+close(gcon)
+stopifnot(identical(lines2, "Hello World"))
+gcon <- gzfile(fconcat, "rb") ## also test gzfile
+lines <- readLines(gcon)
+close(gcon)
+stopifnot(identical(lines, "Hello World"))
+
+
+## Fading out "slave" terminology in {tcltk} -- PR#17835
+if(require("tcltk")) withAutoprint({ # some setups may lack tcltk (right ?)
+  tclServiceMode(FALSE) # no display
+  top <- tktoplevel()
+  (ww <- tryCatch(tkpack.slaves(top), warning=identity))
+  if(package_version(tcltk::tclVersion()) >= "8.6")
+      stopifnot(exprs = {
+          inherits(ww, "deprecatedWarning")
+          identical(ww$new, "tkpack.child")
+      })
+  detach("package:tcltk", unload=TRUE)
+})
+## three tk*.slaves() should be substituted by tk*.child()
+
+
+## invalid `versionCheck` should error even when `quietly`
+assertErrV( requireNamespace("tcltk", quietly = TRUE, versionCheck = "999.0") )
+## silently returned FALSE previously, leading to further confusion
+
+
+## rep() error messages -- PR#18926
+repXerr <- quote({
+    rep(1,   times = 4503599627370496, each = 2)
+    rep(1:2, times = 4503599627370496)
+    rep(1:2^30,                         each = 2^31+2)
+    rep(1:(2^31+1),                     each = 2^31+2)
+
+    rep(1:(2^31+1), times = 1:(2^31+3), each = 2^31+2)
+    rep(1:3, times = 1:3, each = 0)
+    rep(1:3, times = 1:3, each = 2)
+
+    rep(1, times = -1)
+    rep(1, times = NA)
+    rep(1:3, times = 1:4)
+    rep(1:(2^31+1), times = 1:(2^31+3))
+})
+writeLines(repE <- vapply(repXerr[-1L], \(xpr) tryCatch(eval(xpr), error=conditionMessage), "<err>"))
+stopifnot(identical(repE,
+                    c(rep(repE[[1]], 4), rep(repE[[5]], 3), rep(repE[[8]], 4))))
+if(englishMsgs)
+    stopifnot(exprs = {
+        identical(repE[[1]], "length(x) * 'times' * 'each' is too large")
+        identical(repE[[5]], "invalid 'times' argument, given the value of 'each'")
+        identical(repE[[8]], "invalid 'times' argument")
+    })
+## in all cases, msg was " invalid 'times' argument "; in some cases, misleadingly
+
+
+## implement chkDots's  `allowed` argument -- PR#18936
+f <- function(...) chkDots(..., allowed = "foo")
+stopifnot(is.null(f()),
+          is.null(f(foo = 1))) # NB  warn = 2
+assertWarnV(f(bar = "foo"))
+assertWarnV(f(bar = "foo", foo = 2))
+assertWarnV(f(1, 2))
+r <- getVaW(f(1, foo=2), TRUE)
+stopifnot(r == quote(._NULL_()),
+          inherits(print(attr(r, "warning")), "chkDotsWarning"))
+## _classed_ warning
+
+
+## implement messageCondition and use it in packageStartupMessage
+classes <- c("testMessage", "message", "condition")
+tools::assertCondition(message(messageCondition("a test", class = "testMessage")),
+                       classes) |> suppressMessages()
+classes <- c("packageStartupMessage", "simpleMessage", "message", "condition")
+tools::assertCondition(packageStartupMessage("a startup message"),
+                       classes) |> suppressMessages()
+suppressPackageStartupMessages(packageStartupMessage("shouldn't see me"))
+
+
+## "dumping" nothing to an existing connection was an error in R <= 4.5
+## PR#18729
+tmpfile <- tempfile()
+con <- file(tmpfile, "w")
+dump(character(), con)
+close(con)
+unlink(tmpfile)
+
+
+## colSums() .. rowMeans() with complex z, where Re() and Im() contain NAs in different places.
+## "Obviously correct" versions (w/o 'dims' arg):
+colSumsC  <- function(x, na.rm = FALSE) apply(x, 2L,  sum, na.rm=na.rm)
+rowSumsC  <- function(x, na.rm = FALSE) apply(x, 1L,  sum, na.rm=na.rm)
+colMeansC <- function(x, na.rm = FALSE) apply(x, 2L, mean, na.rm=na.rm)
+rowMeansC <- function(x, na.rm = FALSE) apply(x, 1L, mean, na.rm=na.rm)
+y <- 1:12; y[c(2,3,5,7,11)] <- NA
+(z <- matrix(complex(re = 12:1, im = y), 3))
+##       [,1] [,2] [,3]  [,4]
+## [1,] 12+1i 9+4i   NA 3+10i
+## [2,]    NA   NA 5+8i    NA
+## [3,]    NA 7+6i 4+9i 1+12i
+stopifnot(!any(is.na(Re(z)))) # no NA's in real part
+for(na in c(TRUE, FALSE))
+  stopifnot(exprs = {
+    identical(colSumsC (z, na.rm=na),
+              colSums  (z, na.rm=na))
+    identical(colMeansC(z, na.rm=na),
+              colMeans (z, na.rm=na))
+    identical(rowSumsC (z, na.rm=na),
+              rowSums  (z, na.rm=na))
+    identical(rowMeansC(z, na.rm=na),
+              rowMeans (z, na.rm=na))
+    identical(sum(colSums(z, na.rm=na)), sum(z, na.rm=na) -> sz)
+    identical(sum(rowSums(z, na.rm=na)), sz)
+  })
+## almost all differed in R <= 4.5.1
+
+
+## Ben Bolker + Kasper Kri...'s  PR#18946 -- lbeta(<complex>, *)
+(Lb <- list(
+    b1 = tryCid(  beta(1i, 1) )
+  , b2 = tryCid(  beta(1, 1i) )
+  , l1 = tryCid( lbeta(1i, 1) )
+  , l2 = tryCid( lbeta(1, 1i) )
+))
+stopifnot(vapply(Lb, inherits, what="error", NA))
+## l1 was not an error, but non-sense complex,  in R <= 4.5.1
+stopifnot(identical(log10(1i), log(1i, 10)), log2(c(1,2,4) + 0i) == 0:2)
+## (< 24h) lapsus "unimplemented complex fn."
+
+
+## jitter():  more "robust"
+ii5 <- rep(1000, 5)
+i12 <- rep(1:4, each=3)
+iI <- c(-Inf,  3,3,3)
+assertWarnV(iN <- sqrt(-1:1)) # NaNs produced
+set.seed(12)
+(j1 <- jitter(ii5, factor = -1/4)) # ok - no longer NaN
+(j2 <- jitter(i12, amount = -1/4)) #  (ditto)
+(jI <- jitter(iI))
+(jN <- jitter(iN))
+stopifnot(990 < j1, j1 < 1010, 0.9 < j2, j2 < 4.4,
+          jI[1] == -Inf, 2.9 < jI[-1], jI[-1] < 3.1,
+          is.na(jN[1]), -1/4 < jN[-1], jN[-1] < 1.1)
+## x in {Inf,NA,..} failed for 'd' computation;  negative amount / factor gave NaN
+
+
+## substr() / substring() -- allowing stop|last = NULL to mean "suffix" -- PR#18851
+(nL <- nchar(Lstr <- strrep(paste(letters,collapse=""), 4e4))) # nchar(.) > 1e6
+ss <- substring(Lstr, 1e6)
+stopifnot(exprs = {
+    nchar(ss) == nL - 1e6 + 1
+    startsWith(ss, "nopqrst")
+    endsWith  (ss, "xyz")
+    identical(substring(ss, nchar(ss)-7), "stuvwxyz")
+}) ## were all FALSE in R <= 4.5.1: `last = 1000000L' was not large enough
+
+
+## pretty(<very small>, eps.correct=2) would produce huge vectors
+assertWarnV(pp <- .pretty(c(0, 1e-322), eps.correct = 2))
+str(pp)
+E <- 2e-314
+stopifnot(all.equal(list(l = -E, u = E, n = 2L), pp, tolerance = 1e-12))
+## n = 1112538 (Lnx 64b) in R <= 4.5.1  ^^^^^^
+
+
+## poly(<factor>, .)
+hf <- c(-1, 1.2, -1.5, -0.75, -2)
+x <-  c("c", "b", "a",  "b", "a")
+xf <- as.factor(x)
+xo <- as.ordered(x)
+tools::assertError(verbose=TRUE, lm(hf ~ poly(x, 2)))
+tools::assertError(verbose=TRUE, lm(hf ~ poly(xf, 2)))
+coef(om <- lm(hf ~ poly(xo, 2)))
+stopifnot(
+    all.equal(coef(om), tolerance = 5e-5,
+              c("(Intercept)" = -0.81, "poly(xo, 2)1" = 1.01, "poly(xo, 2)2" = -1.7105)))
+## poly(xf, .) gave no error in R 4.1.1--4.5.x
+
+
+## PR#15275
+## terms.formula(x, ...) when RHS of 'x' has logical/numeric NA;
+## "equal" variables were not matched
+chkv <- function(formula, variables, do.eval = FALSE)
+    identical(attr(terms(formula), "variables") |> print(),  ## MM: print() just for testing with prev R
+              if(do.eval) variables else substitute(variables))
+stopifnot(exprs = { ## logical/numeric mixtures:
+    ## equal non-NA were matched, equal NA were not
+    chkv(~x + f(FALSE) + f(FALSE) + g(NA) + g(NA),
+     list(x,  f(FALSE),             g(NA)))
+    chkv(~x + f(FALSE) + f(FALSE) + g(NaN) + g(NaN),
+     list(x,  f(FALSE),             g(NaN)))
+    chkv(~x + f(FALSE) + f(0L) + g(NA) + g(NA_integer_),
+     list(x,  f(FALSE),          g(NA)))
+    chkv(~x + f(FALSE) + f(0) + g(NA) + g(NA_real_),
+      list(x, f(FALSE),         g(NA)))
+    ## complex: matching never supported; chkv() |-> TRUE
+    chkv(~x + f(0) + f(0i) + g(NA_real_) + g(NA_complex_),
+     list(x,  f(0),  f(0i),  g(NA_real_),  g(NA_complex_)))
+    chkv(~x + f(0i) + f(0i) + g(NA_complex_) + g(NA_complex_),
+     list(x,  f(0i),  f(0i),  g(NA_complex_),  g(NA_complex_)))
+    ## character: matching always supported (only w/o mixture)
+    chkv(~x + f(0) + f("0") + g(NA_real_) + g(NA_character_),
+     list(x,  f(0),  f("0"),  g(NA_real_),  g(NA_character_)))
+    chkv(~x + f("0") + f("0") + g(NA_character_) + g(NA_character_),
+     list(x,  f("0"),           g(NA_character_)))
+    ## "extra": it was possible to trigger STRING_ELT(<empty>, 0)
+    {
+        e <- list(. = character(0L))
+        chkv(as.formula(substitute(~x + f(.) + f(.), e)),
+             substitute(list(x, f(.)), e), do.eval = TRUE)
+    }
+})
+
+## check that tim and dimnames are dropped when estending with GROWABLE
+x <- 1:49
+x[50] <- 50L
+dim(x) <- c(25, 2)
+dimnames(x) <- list(NULL, c("a", "b"))
+a <- .Internal(address(x))
+x[51] <- 51L
+stopifnot(identical(a, .Internal(address(x)))) ## reused x
+stopifnot(is.null(attributes(x))) ## dim and dimnames have been dropped
 
 
 ## keep at end

@@ -55,15 +55,7 @@ str2expression(text)
     \dQuote{string}.}
 }
 \references{
-  Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988)
-  \emph{The New S Language}.
-  Wadsworth & Brooks/Cole.
-
-  Murdoch, D. (2010).
-  \dQuote{Source References}.
-  %% \href{https://journal.r-project.org/archive/2010-2/RJournal_2010-2_Murdoch.pdf}{Source References}.
-  \emph{The R Journal}, \bold{2}(2), 16--19.
-  \doi{10.32614/RJ-2010-010}.
+  \bibshow{R:Becker+Chambers+Wilks:1988, R:Murdoch:2010}
 }
 \seealso{
   \code{\link{scan}}, \code{\link{source}}, \code{\link{eval}},
@@ -91,7 +83,7 @@ str2expression(text)
   \code{n = 1}, and \code{n < 0} will read until an \abbr{EOF} character is
   read.  (The \abbr{EOF} character is \abbr{Ctrl}-Z for the Windows front-ends.)  The
   line-length limit is 4095 bytes when reading from the console (which
-  may impose a lower limit: see \sQuote{An Introduction to R}).
+  may impose a lower limit).% see \manual{R-intro}{}
 
   The default for \code{srcfile} is set as follows.  If
   \code{keep.source} is not \code{TRUE}, \code{srcfile}

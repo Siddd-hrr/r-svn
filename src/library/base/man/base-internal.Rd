@@ -66,7 +66,6 @@
 \alias{.make_numeric_version}
 \alias{.expand_R_libs_env_var}
 \alias{.kronecker}
-\alias{.packageStartupMessage}
 \alias{.rmpkg}
 \alias{.set_ops_need_as_vector}
 
@@ -134,7 +133,6 @@ lazyLoadDBfetch(key, file, compressed, hook)
 .make_numeric_version(x, strict = TRUE, regexp, classes = NULL) 
 .expand_R_libs_env_var(x) 
 .kronecker(X, Y, FUN = "*", make.dimnames = FALSE, ...) 
-.packageStartupMessage(message, call = NULL) 
 .rmpkg(pkg) 
 .formula2varlist(formula, data, warnLHS = TRUE, ignoreLHS = warnLHS)
 .set_ops_need_as_vector(x, y)
@@ -245,7 +243,7 @@ lazyLoadDBfetch(key, file, compressed, hook)
   have had had they been closures.  All the primitives that are internal
   S3 generics have corresponding members of \code{.GenericArgsEnv} and
   the remaining non-language-element primitives correspond to
-  \code{.ArgsEnv}.  See the \sQuote{R Internals} manual for further
+  \code{.ArgsEnv}.  See the \manual{R-ints}{} manual for further
   details.  They are used by \code{\link{args}} and
   \code{\link{print.default}} and the QC functions \code{\link{codoc}}
   and \code{\link{checkS3methods}}.

@@ -674,7 +674,8 @@ SEXP modelmatrix(SEXP call, SEXP op, SEXP args, SEXP rho)
     PROTECT(x = allocMatrix(REALSXP, n, nc));
     double *rx = REAL(x);
 
-#ifdef R_MEMORY_PROFILING
+#if defined(R_MEMORY_PROFILING) && defined(USE_RINTERNALS)
+    // RTRACE and SET_RTRACE macros are only available with USE_RINTERNALS
     if (RTRACE(vars)){
        memtrace_report(vars, x);
        SET_RTRACE(x, 1);
@@ -696,7 +697,9 @@ SEXP modelmatrix(SEXP call, SEXP op, SEXP args, SEXP rho)
 	    if (INTEGER(columns)[i] == 0)
 		continue;
 	    var_i = VECTOR_ELT(variable, i);
-#ifdef R_MEMORY_PROFILING
+#if defined(R_MEMORY_PROFILING) && defined(USE_RINTERNALS)
+	    // RTRACE and SET_RTRACE macros are only available with
+	    // USE_RINTERNALS
 	    if (RTRACE(var_i)){
 	       memtrace_report(var_i, x);
 	       SET_RTRACE(x, 1);
@@ -1061,12 +1064,14 @@ static int MatchVar(SEXP var1, SEXP var2)
     /* Symbols */
     if (isSymbol(var1) && isSymbol(var2))
 	return (var1 == var2);
-    /* Literal Numerics */
-    if (isNumeric(var1) && isNumeric(var2))
-	return (asReal(var1) == asReal(var2));
+    /* Literal Numerics (incl 'NA', 'NaN') */
+    if (isNumeric(var1) && isNumeric(var2)) {
+	double t1 = asReal(var1), t2 = asReal(var2);
+	return ISNAN(t1) ? ISNAN(t2) : (t1 == t2);
+    }
     /* Literal Strings */
     if (isString(var1) && isString(var2))
-	return Seql2(STRING_ELT(var1, 0), STRING_ELT(var2, 0));
+	return Seql2(asChar(var1), asChar(var2));
     /* Nothing else matches */
     return 0;
 }

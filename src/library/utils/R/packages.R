@@ -115,9 +115,12 @@ function(contriburl = contrib.url(repos, type), method,
                 need_dest <- FALSE
                 op <- options(warn = -1L)
                 z <- tryCatch({
-                    download.file(url = paste0(repos, "/PACKAGES.rds"),
-                                  destfile = dest, method = method,
-                                  cacheOK = FALSE, quiet = quiet, mode = "wb", ...)
+                    z <- download.file(url = paste0(repos, "/PACKAGES.rds"),
+                                       destfile = dest, method = method,
+                                       cacheOK = FALSE, quiet = quiet,
+                                       mode = "wb", ...)
+                    if(z != 0L)
+                        stop(gettextf("'download.file()' error code '%d'", z))
                 }, error = identity)
                 options(op)
                 if(!inherits(z, "error")) {
@@ -135,17 +138,23 @@ function(contriburl = contrib.url(repos, type), method,
                     ## FIXME: this should check the return value == 0L
                     z <- tryCatch({
                         ## This is a binary file
-                        download.file(url = paste0(repos, "/PACKAGES.gz"),
-                                      destfile = tmpf, method = method,
-                                      cacheOK = FALSE, quiet = quiet, mode = "wb", ...)
+                        z <- download.file(url = paste0(repos, "/PACKAGES.gz"),
+                                           destfile = tmpf, method = method,
+                                           cacheOK = FALSE, quiet = quiet,
+                                           mode = "wb", ...)
+                        if(z != 0L)
+                            stop(gettextf("'download.file()' error code '%d'", z))
                     }, error = identity)
                     if(inherits(z, "error"))
                         z <- tryCatch({
                             ## read.dcf is going to interpret CRLF as
                             ## LF, so use binary mode to avoid CRLF.
-                            download.file(url = paste0(repos, "/PACKAGES"),
+                            z <- download.file(url = paste0(repos, "/PACKAGES"),
                                           destfile = tmpf, method = method,
-                                          cacheOK = FALSE, quiet = quiet, mode = "wb", ...)
+                                          cacheOK = FALSE, quiet = quiet,
+                                          mode = "wb", ...)
+                            if(z != 0L)
+                                stop(gettextf("'download.file()' error code '%d'", z))
                         }, error = identity)
                     options(op)
 
@@ -765,6 +774,14 @@ remove.packages <- function(pkgs, lib)
     invisible()
 }
 
+.download.file.method <- function(method)
+{
+    if (missing(method))
+	method <- getOption("download.file.method", default = "auto")
+    match.arg(method, c("auto", "internal", "wininet",
+                        "libcurl", "wget", "curl", "lynx"))
+}
+
 download.packages <- function(pkgs, destdir, available = NULL,
                               repos = getOption("repos"),
                               contriburl = contrib.url(repos, type),
@@ -782,7 +799,7 @@ download.packages <- function(pkgs, destdir, available = NULL,
         available <-
             available.packages(contriburl = contriburl, method = method, ...)
 
-    if (missing(method) || method == "auto" || method == "libcurl")
+    if (.download.file.method(method) %in% c("auto", "libcurl"))
         bulkdown <- matrix(character(), 0L, 3L)
     else
         bulkdown <- NULL
@@ -1293,7 +1310,7 @@ function(repos, file = stdout(), ...)
 }
 
 ## default is included in setRepositories.Rd (via \Sexpr)
-.BioC_version_associated_with_R_version_default <- "3.21"
+.BioC_version_associated_with_R_version_default <- "3.22"
 .BioC_version_associated_with_R_version <- function ()
     numeric_version(Sys.getenv("R_BIOC_VERSION",
                                .BioC_version_associated_with_R_version_default))

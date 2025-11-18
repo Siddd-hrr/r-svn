@@ -813,41 +813,95 @@ function(dir, packages)
     invisible()
 }
 
+### * .install_R_bibliographies_as_RDS
+
+.install_R_bibliographies_as_RDS <- 
+function(dir) {
+    bibfiles <- Sys.glob(file.path(dir, "*.R"))
+    bibentries <- do.call(c, lapply(bibfiles, .read_bibentries))
+    keys <- .bibentry_get_key(bibentries)
+    if(any(ind <- !nzchar(keys))) {
+        msg <- paste(c("Found the following bibentries with no key:",
+                       strwrap(format(bibentries[ind]),
+                               indent = 2L, exdent = 4L)),
+                     collapse = "\n")
+        stop(msg, call. = FALSE)
+    }
+    if(any(ind <- duplicated(keys))) {
+        msg <- paste(c("Found the following duplicated keys:", 
+                       .strwrap22(sQuote(keys[ind]))),
+                     collapse = "\n")
+        stop(msg, call. = FALSE)
+    }
+    saveRDS(bibentries, file.path(dir, "R.rds"))
+}
+
+### * .install_R_dictionaries_as_RDS
+
+.install_R_dictionaries_as_RDS <-
+function(dir) {
+    txtfiles <- Sys.glob(file.path(dir, "*.txt"))
+    for (file in txtfiles) {
+        rdsfile <- paste0(file_path_sans_ext(file), ".rds")
+        saveRDS(readLines(file, encoding = "UTF-8"), rdsfile)
+    }
+}
+
 ### * .install_package_Rd_objects
 
-## called from src/library/Makefile
+## called from src/library/Makefile and .install_packages
 .install_package_Rd_objects <-
 function(dir, outDir, encoding = "unknown")
 {
+    packageName <- basename(outDir)
     dir <- file_path_as_absolute(dir)
     mandir <- file.path(dir, "man")
     manfiles <- if(!dir.exists(mandir)) character()
-    else list_files_with_type(mandir, "docs")
+                else list_files_with_type(mandir, "docs")
     manOutDir <- file.path(outDir, "help")
     dir.create(manOutDir, FALSE)
-    db_file <- file.path(manOutDir,
-                         paste0(basename(outDir), ".rdx"))
+    db_file <- file.path(manOutDir, paste0(packageName, ".rdx"))
     built_file <- file.path(dir, "build", "partial.rdb")
-    macro_files <- list.files(file.path(dir, "man", "macros"), pattern = "\\.Rd$", full.names = TRUE)
+    macro_files <- list.files(file.path(dir, "man", "macros"),
+                              pattern = "\\.Rd$", full.names = TRUE)
     if (length(macro_files)) {
     	macroDir <- file.path(manOutDir, "macros")
     	dir.create(macroDir, FALSE)
     	file.copy(macro_files, macroDir, overwrite = TRUE)
     }
-    ## Avoid (costly) rebuilding if not needed.
-    ## Actually, it seems no more costly than these tests, which it also does
     pathsFile <- file.path(manOutDir, "paths.rds")
-    if(!file_test("-f", db_file) || !file.exists(pathsFile) ||
-       !identical(sort(manfiles), sort(readRDS(pathsFile))) ||
-       !all(file_test("-nt", db_file, manfiles))) {
+    ## Avoid (costly) rebuilding if not needed.
+    ## 'make Rdobjects' now takes 13s compared to 0.5s if remaking skips
+    ## the below.  This tests if the Rd DB from a previous 'make' can be
+    ## fully kept or needs updating, but ignores that a dynamic help
+    ## page may need reprocessing even without modifying the source Rd
+    ## file. With the advent of \bibshow, many help pages have become
+    ## dynamic and always rebuilding these is tedious ... 
+    ## So for now only do a full rebuild when the system macros were
+    ## touched. 
+    system_file <- file.path(R.home("share"), "Rd", "macros", "system.Rd")
+    if (!file.exists(db_file) || # first build, including from .install_packages
+        file_test("-nt", system_file, db_file)) {
+        db_file <- NULL # do not reuse the old Rd DB
+        upToDate <- FALSE
+    } else {
+        upToDate <- file.exists(pathsFile) &&
+            identical(sort(manfiles), sort(readRDS(pathsFile))) &&
+            all(file_test("-nt", db_file, manfiles))
+    }
+    if(!upToDate) {
         db <- .build_Rd_db(dir, manfiles, db_file = db_file,
                            encoding = encoding, built_file = built_file)
         nm <- as.character(names(db)) # Might be NULL
-        saveRDS(structure(nm,
-                          first = nchar(file.path(mandir)) + 2L),
-                pathsFile)
+        at <- c(list(first = nchar(file.path(mandir)) + 2L),
+                if(basename(dir) == "tools") {
+                    ## We could use 3 dirname() calls, but perhaps more
+                    ## easily:
+                    list(top = substr(dir, 1L, nchar(dir) - 18L))
+                })
+        saveRDS(`attributes<-`(nm, at), pathsFile)
         names(db) <- sub("\\.[Rr]d$", "", basename(nm))
-        makeLazyLoadDB(db, file.path(manOutDir, basename(outDir)))
+        makeLazyLoadDB(db, file.path(manOutDir, packageName))
     }
     invisible()
 }

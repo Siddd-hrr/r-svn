@@ -2,7 +2,7 @@
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1995, 1996  Robert Gentleman and Ross Ihaka
  *            (C) 2004  The R Foundation
- *  Copyright (C) 1998-2015 The R Core Team.
+ *  Copyright (C) 1998-2025 The R Core Team.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -52,14 +52,15 @@
 */
 #ifdef __APPLE__
 /* it seems macOS builds did not copy >= 2^32 bytes fully */
-#define DUPLICATE_ATOMIC_VECTOR(type, fun, to, from, deep) do {	\
+#define DUPLICATE_ATOMIC_VECTOR(type, fun, fun_ro, to, from, deep) do {	\
   R_xlen_t __n__ = XLENGTH(from); \
   PROTECT(from); \
   PROTECT(to = allocVector(TYPEOF(from), __n__)); \
-  if (__n__ == 1) fun(to)[0] = fun(from)[0]; \
+  if (__n__ == 1) fun(to)[0] = fun_ro(from)[0]; \
   else { \
       R_xlen_t __this; \
-      type *__to = fun(to), *__from = fun(from); \
+      type *__to = fun(to); \
+      const type *__from = fun_ro(from); \
       while(__n__ > 0) { \
 	 __this = (__n__ < 1000000) ? __n__ : 1000000; \
 	 memcpy(__to, __from, __this * sizeof(type));  \
@@ -71,12 +72,12 @@
   UNPROTECT(2); \
 } while (0)
 #else
-#define DUPLICATE_ATOMIC_VECTOR(type, fun, to, from, deep) do {	\
+#define DUPLICATE_ATOMIC_VECTOR(type, fun, fun_ro, to, from, deep) do {	\
   R_xlen_t __n__ = XLENGTH(from); \
   PROTECT(from); \
   PROTECT(to = allocVector(TYPEOF(from), __n__)); \
-  if (__n__ == 1) fun(to)[0] = fun(from)[0]; \
-  else if (__n__) memcpy(fun(to), fun(from), __n__ * sizeof(type)); \
+  if (__n__ == 1) fun(to)[0] = fun_ro(from)[0]; \
+  else if (__n__) memcpy(fun(to), fun_ro(from), __n__ * sizeof(type)); \
   DUPLICATE_ATTRIB(to, from, deep); \
   COPY_TRUELENGTH(to, from); \
   UNPROTECT(2); \
@@ -341,16 +342,25 @@ static SEXP duplicate1(SEXP s, Rboolean deep)
 	COPY_TRUELENGTH(t, s);
 	UNPROTECT(2);
 	break;
-    case LGLSXP: DUPLICATE_ATOMIC_VECTOR(int, LOGICAL, t, s, deep); break;
-    case INTSXP: DUPLICATE_ATOMIC_VECTOR(int, INTEGER, t, s, deep); break;
-    case REALSXP: DUPLICATE_ATOMIC_VECTOR(double, REAL, t, s, deep); break;
-    case CPLXSXP: DUPLICATE_ATOMIC_VECTOR(Rcomplex, COMPLEX, t, s, deep); break;
-    case RAWSXP: DUPLICATE_ATOMIC_VECTOR(Rbyte, RAW, t, s, deep); break;
+    case LGLSXP: DUPLICATE_ATOMIC_VECTOR(int, LOGICAL, LOGICAL_RO, t, s, deep); break;
+    case INTSXP: DUPLICATE_ATOMIC_VECTOR(int, INTEGER, INTEGER_RO, t, s, deep); break;
+    case REALSXP: DUPLICATE_ATOMIC_VECTOR(double, REAL, REAL_RO, t, s, deep); break;
+    case CPLXSXP: DUPLICATE_ATOMIC_VECTOR(Rcomplex, COMPLEX, COMPLEX_RO, t, s, deep); break;
+    case RAWSXP: DUPLICATE_ATOMIC_VECTOR(Rbyte, RAW, RAW_RO, t, s, deep); break;
     case STRSXP:
-	/* direct copying and bypassing the write barrier is OK since
-	   t was just allocated and so it cannot be older than any of
-	   the elements in s.  LT */
-	DUPLICATE_ATOMIC_VECTOR(SEXP, STRING_PTR, t, s, deep);
+	/* Direct copying and bypassing the write barrier would be OK
+	   since t was just allocated and so it cannot be older than
+	   any of the elements in s. But it does not increment the
+	   reference counts, so use a loop with SET_STRING_ELT. LT */
+	//DUPLICATE_ATOMIC_VECTOR(SEXP, STRING_PTR, STRING_PTR_RO, t, s, deep);
+	n = XLENGTH(s);
+	PROTECT(s);
+	PROTECT(t = allocVector(TYPEOF(s), n));
+	for(i = 0 ; i < n ; i++)
+	    SET_STRING_ELT(t, i, STRING_ELT(s, i));
+	DUPLICATE_ATTRIB(t, s, deep);
+	COPY_TRUELENGTH(t, s);
+	UNPROTECT(2);
 	break;
     case PROMSXP:
 	return s;
@@ -383,30 +393,30 @@ void copyVector(SEXP s, SEXP t)
 	xcopyStringWithRecycle(s, t, 0, ns, nt);
 	break;
     case LGLSXP:
-	xcopyLogicalWithRecycle(LOGICAL(s), LOGICAL(t), 0, ns, nt);
+	xcopyLogicalWithRecycle(LOGICAL(s), LOGICAL_RO(t), 0, ns, nt);
 	break;
     case INTSXP:
-	xcopyIntegerWithRecycle(INTEGER(s), INTEGER(t), 0, ns, nt);
+	xcopyIntegerWithRecycle(INTEGER(s), INTEGER_RO(t), 0, ns, nt);
 	break;
     case REALSXP:
-	xcopyRealWithRecycle(REAL(s), REAL(t), 0, ns, nt);
+	xcopyRealWithRecycle(REAL(s), REAL_RO(t), 0, ns, nt);
 	break;
     case CPLXSXP:
-	xcopyComplexWithRecycle(COMPLEX(s), COMPLEX(t), 0, ns, nt);
+	xcopyComplexWithRecycle(COMPLEX(s), COMPLEX_RO(t), 0, ns, nt);
 	break;
     case EXPRSXP:
     case VECSXP:
 	xcopyVectorWithRecycle(s, t, 0, ns, nt);
 	break;
     case RAWSXP:
-	xcopyRawWithRecycle(RAW(s), RAW(t), 0, ns, nt);
+	xcopyRawWithRecycle(RAW(s), RAW_RO(t), 0, ns, nt);
 	break;
     default:
 	UNIMPLEMENTED_TYPE("copyVector", s);
     }
 }
 
-// In Rinternals.h
+// In Rinternals.h, but no longer used by R
 void copyListMatrix(SEXP s, SEXP t, Rboolean byrow)
 {
     int nr = nrows(s), nc = ncols(s);
@@ -414,15 +424,15 @@ void copyListMatrix(SEXP s, SEXP t, Rboolean byrow)
     SEXP pt = t;
     if(byrow) {
 	R_xlen_t NR = nr;
-	SEXP tmp = PROTECT(allocVector(STRSXP, ns));
+	SEXP tmp = PROTECT(allocVector(VECSXP, ns));
 	for (int i = 0; i < nr; i++)
 	    for (int j = 0; j < nc; j++) {
-		SET_STRING_ELT(tmp, i + j * NR, duplicate(CAR(pt)));
+		SET_VECTOR_ELT(tmp, i + j * NR, duplicate(CAR(pt)));
 		pt = CDR(pt);
 		if(pt == R_NilValue) pt = t;
 	    }
 	for (int i = 0; i < ns; i++) {
-	    SETCAR(s, STRING_ELT(tmp, i++));
+	    SETCAR(s, VECTOR_ELT(tmp, i++));
 	    s = CDR(s);
 	}
 	UNPROTECT(1);
@@ -489,7 +499,7 @@ void copyMatrix(SEXP s, SEXP t, Rboolean byrow)
 
 #define COPY_WITH_RECYCLE(VALTYPE, TNAME) \
 attribute_hidden void \
-xcopy##TNAME##WithRecycle(VALTYPE *dst, VALTYPE *src, R_xlen_t dstart, R_xlen_t n, R_xlen_t nsrc) { \
+xcopy##TNAME##WithRecycle(VALTYPE *dst, const VALTYPE *src, R_xlen_t dstart, R_xlen_t n, R_xlen_t nsrc) { \
 							\
     if (nsrc >= n) { /* no recycle needed */		\
 	for(R_xlen_t i = 0; i < n; i++)		\

@@ -1,7 +1,7 @@
 #  File src/library/tools/R/dynamicHelp.R
 #  Part of the R package, https://www.R-project.org
 #
-#  Copyright (C) 1995-2022 The R Core Team
+#  Copyright (C) 1995-2025 The R Core Team
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -130,7 +130,7 @@ httpd <- function(path, query, ...)
         config_val_to_logical(Sys.getenv("_R_HELP_LINKS_TO_TOPICS_", "TRUE"))
     .HTMLdirListing <- function(dir, base, up) {
         files <- list.files(dir)    # note, no hidden files are listed
-        out <- HTMLheader(paste0("Listing of directory<br/>", dir),
+        out <- HTMLheader(paste0("Listing of directory<br>", dir),
         		  headerTitle = paste("R:", dir), logo=FALSE,
         		  up = up)
         if(!length(files))
@@ -141,7 +141,7 @@ httpd <- function(path, query, ...)
                      paste0("<dd>", mono(iconv(urls, "", "UTF-8")), "</dd>"),
                      "</dl>")
         }
-        out <- c(out, "<hr/>\n</div></body></html>")
+        out <- c(out, "<hr>\n</div></body></html>")
         list(payload = paste(out, collapse="\n"))
     }
 
@@ -156,7 +156,7 @@ httpd <- function(path, query, ...)
          	out <- c(out, paste0('<h2>Manuals in package ', sQuote(pkg),'</h2>'),
          		 makeVignetteTable(cbind(Package=pkg, vinfo[,c("File", "Title", "PDF", "R"), drop = FALSE])))
      	}
-        out <- c(out, "<hr/>\n</div></body></html>")
+        out <- c(out, "<hr>\n</div></body></html>")
         list(payload = paste(out, collapse="\n"))
     }
 
@@ -214,7 +214,7 @@ httpd <- function(path, query, ...)
         out <- c(HTMLheader(title),
                  if ("pattern" %in% names(query) && nchar(query["pattern"]))
                      paste0('The search string was <b>"', query["pattern"], '"</b>'),
-                 '<hr/>\n')
+                 '<hr>\n')
 
         if(!NROW(res))
             out <- c(out, gettext("No results found"))
@@ -257,7 +257,7 @@ httpd <- function(path, query, ...)
                 }
 	    }
         }
-        out <- c(out, "<hr/>\n</div></body></html>")
+        out <- c(out, "<hr>\n</div></body></html>")
         list(payload = paste(out, collapse="\n"))
     }
 
@@ -392,6 +392,7 @@ httpd <- function(path, query, ...)
     ExampleRegexp <- "^/library/([^/]*)/Example/([^/]*)$"
     newsRegexp <- "^/library/([^/]*)/NEWS([.](Rd|md))?$"
     figureRegexp <- "^/library/([^/]*)/(help|html)/figures/([^/]*)$"
+    logoRegexp <- "^/library/([^/]*)/logo$"
     sessionRegexp <- "^/session/"
     packageIndexRegexp <- "^/library/([^/]*)$"
     packageLicenseFileRegexp <- "^/library/([^/]*)/(LICEN[SC]E$)"
@@ -473,7 +474,7 @@ httpd <- function(path, query, ...)
                                "<html>",
                                "<head>",
                                "<title>R: help</title>",
-                               "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />",
+                               "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">",
                                "</head>",
                                "<body>",
                                 "<p>",
@@ -536,7 +537,7 @@ httpd <- function(path, query, ...)
                     path <- dirname(dirname(files))
                     files <- paste0('/library/', basename(path), '/html/',
                                     basename(files), '.html')
-                    msg <- c(msg, "<br/>",
+                    msg <- c(msg, "<br>",
                              "However, you might be looking for one of",
                              "<p></p>",
                              paste0('<p><a href="', files, '">',
@@ -658,7 +659,11 @@ httpd <- function(path, query, ...)
         fig <- sub(figureRegexp, "\\3", path)
         file <- system.file("help", "figures", fig, package=pkg)
         return( list(file=file, "content-type" = mime_type(fig)) )
-    } else if (grepl(sessionRegexp, path)) {
+    } else if (grepl(logoRegexp, path)) {
+        pkg <- sub(logoRegexp, "\\1", path)
+        file <- staticLogoPath(pkg)
+        return( list(file=file, "content-type" = mime_type(basename(file))) )
+     } else if (grepl(sessionRegexp, path)) {
         tail <- sub(sessionRegexp, "", path)
     	file <- file.path(tempdir(), tail)
     	return( list(file=file, "content-type" = mime_type(tail)) )
@@ -703,12 +708,15 @@ httpd <- function(path, query, ...)
         ## remake as needed
         utils::make.packages.html(temp = TRUE)
         list(file = file.path(tempdir(), ".R", path))
-    } else if(path == "/doc/html/rw-FAQ.html") {
-        file <- file.path(R.home("doc"), sub("^/doc", "", path))
+    } else if(path %in% c("/doc/html/rw-FAQ.html", "/doc/manual/rw-FAQ.html")) {
+        ## exists on Windows in /doc/html, on Linux in /doc/manual only if made
+        file <- file.path(R.home("doc"),
+                          if(.Platform$OS.type == "windows") "html" else "manual",
+                          "rw-FAQ.html")
         if(file.exists(file))
             list(file = file, "content-type" = mime_type(path))
         else {
-            url <- "https://cran.r-project.org/bin/windows/base/rw-FAQ.html"
+            url <- "https://cloud.R-project.org/bin/windows/base/rw-FAQ.html"
 	    return(list(payload = paste0('Redirect to <a href="', url, '">"',
                                          url, '"</a>'),
 	    		"content-type" = 'text/html',
@@ -727,10 +735,10 @@ httpd <- function(path, query, ...)
             ## tarball has pre-built version of R-admin.html
             list(file = file, "content-type" = mime_type(path))
         } else {
-            ## url <- "https://cran.r-project.org/manuals.html"
+            ## url <- "https://cloud.R-project.org/manuals.html"
             version <-
                 if(grepl("unstable", R.version$status)) "r-devel" else "r-patched"
-            url <- file.path("https://cran.r-project.org/doc/manuals",
+            url <- file.path("https://cloud.R-project.org/doc/manuals",
                              version, basename(path))
 	    return(list(payload = paste0('Redirect to <a href="', url, '">"',
                                          url, '"</a>'),

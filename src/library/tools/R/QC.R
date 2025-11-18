@@ -5251,7 +5251,7 @@ function(dir, doDelete = FALSE)
         all_files <- mydir(demo_dir)
         demo_files <- list_files_with_type(demo_dir, "demo",
                                            full.names = FALSE)
-	save_files <- paste0(sub("r$", "R", demo_files), "out.save")
+        save_files <- paste0(sub("r$", "R", demo_files), "out.save")
         wrong <- setdiff(all_files,
                          c("00Index", demo_files, save_files))
         if(length(wrong)) {
@@ -6094,6 +6094,7 @@ function(package, dir, lib.loc = NULL)
                     ## and is in e.g. R.oo
                     if(!dunno) {
                         pkg <- as.character(pkg)
+                        all_imports <<- c(all_imports, pkg)
                         if(Call %in% c("loadNamespace",
                                        "requireNamespace")) {
                             if(pkg %notin%
@@ -6660,7 +6661,7 @@ function(package, dir, lib.loc = NULL)
         ## con <- file(file, encoding = enc)
         lines <- iconv(readLines(file, warn = FALSE),
                        from = "UTF-8", to = "", sub = "byte")
-        con <- textConnection(lines)
+        con <- textConnection(lines, name = file)
         on.exit(close(con), add = TRUE)
     } else con <- file
 
@@ -7974,7 +7975,7 @@ function(dir, localOnly = FALSE, pkgSize = NA)
         z <- parse_URI_reference(v)
         if((endsWith(tolower(z$authority), "github.com") ||
             endsWith(tolower(z$authority), "gitlab.com")) &&
-           basename(z$path) != "issues") {
+           !grepl("/issues(/new)?/?$", z$path)) {
             w <- sprintf("%s/issues", sub("/$", "", v))
             out$bugreports <-
                 paste(c("The BugReports field in DESCRIPTION has",
@@ -8093,7 +8094,7 @@ function(dir, localOnly = FALSE, pkgSize = NA)
 
     if(!is.na(size <- as.numeric(pkgSize)) &&
        size > as.numeric(Sys.getenv("_R_CHECK_CRAN_INCOMING_TARBALL_THRESHOLD_",
-                                    unset = "5e6")))
+                                    unset = "1e7")))
         out$size_of_tarball <- size
 
     ## Check URLs.
@@ -8990,6 +8991,7 @@ function(x, ...)
                        (grepl(re_or(c("^https://pubmed.ncbi.nlm.nih.gov/[0-9]+",
                                       "^https://www.ncbi.nlm.nih.gov/pmc/articles/PMC[0-9]+/$",
                                       "^https://academic.oup.com/.*(/[0-9]*){4}$",
+                                      "^https://journals.plos.org/.*/article",
                                       "^https://www.sciencedirect.com/science/article")),
                               y$URL)))) {
                 ## <FIXME>

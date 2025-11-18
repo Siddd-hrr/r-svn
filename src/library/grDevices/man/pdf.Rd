@@ -5,7 +5,6 @@
 
 \name{pdf}
 \alias{pdf}
-\encoding{UTF-8}
 
 \title{PDF Graphics Device}
 %% The definitive doc is the source :-)
@@ -342,7 +341,7 @@ pdf(file = if(onefile) "Rplots.pdf" else "Rplot\%03d.pdf",
 
 \section{Conventions}{
   This section describes the implementation of the conventions for
-  graphics devices set out in the \sQuote{R Internals} manual.
+  graphics devices set out in \manual{R-ints}{}.
 
   \itemize{
     \item The default device size is 7 inches square.

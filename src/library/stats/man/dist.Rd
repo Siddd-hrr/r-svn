@@ -133,16 +133,9 @@ as.dist(m, diag = FALSE, upper = FALSE)
     argument.}
 }
 \references{
-  Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988)
-  \emph{The New S Language}.
-  Wadsworth & Brooks/Cole.
-
-  Mardia, K. V., Kent, J. T. and Bibby, J. M. (1979)
-  \emph{Multivariate Analysis.} Academic Press.
-
-  Borg, I. and Groenen, P. (1997)
-  \emph{Modern Multidimensional Scaling.  Theory and Applications.}
-  Springer.
+  \bibshow{R:Becker+Chambers+Wilks:1988,
+    R:Borg+Groenen:1997,
+    R:Mardia+Kent+Bibby:1979}
 }
 \seealso{
   \code{\link[cluster]{daisy}} in the \CRANpkg{cluster} package with more

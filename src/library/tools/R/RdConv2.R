@@ -1,7 +1,7 @@
 #  File src/library/tools/R/RdConv2.R
 #  Part of the R package, https://www.R-project.org
 #
-#  Copyright (C) 1995-2024 The R Core Team
+#  Copyright (C) 1995-2025 The R Core Team
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -206,6 +206,14 @@ processRdChunk <- function(code, stage, options, env, macros)
     if (is.null(opts <- attr(code, "Rd_option"))) opts <- ""
     codesrcref <- attr(code, "srcref")
     Rdfile <- attr(codesrcref, "srcfile")$filename
+    ## Provide Rdfile for easy access to Sexpr code (instead of having
+    ## to look in the call stack for the call to processRdChunk() and
+    ## get Rdfile from the correspnding frame.
+    ## We may want to provide Rdfile and other information for the whole
+    ## prepare_Rd() processing, but that recalls itself so dropping the
+    ## information on exit is not straightforward.
+    processRdChunk_data_store(list(Rdfile = Rdfile))
+    on.exit(processRdChunk_data_store(NULL))
     options <- utils:::SweaveParseOptions(opts, options, RweaveRdOptions)
     if (stage == options$stage) {
         #  The code below is very similar to RWeaveLatexRuncode, but simplified
@@ -221,7 +229,8 @@ processRdChunk <- function(code, stage, options, env, macros)
 	code <- structure(code[tags != "COMMENT"],
 	                  srcref = codesrcref) # retain for error locations
 	chunkexps <- tryCatch(
-	    parse(text = as.character(code), keep.source = options$keep.source),
+	    parse(text = sub("\n$", "", as.character(code)),
+	          keep.source = options$keep.source),
 	    error = function (e) stopRd(code, Rdfile, conditionMessage(e))
 	)
 
@@ -361,6 +370,16 @@ processRdChunk <- function(code, stage, options, env, macros)
     replaceRdSrcrefs(res, codesrcref)
 }
 
+processRdChunk_data_store <- local({
+    .store <- NULL
+    function(new) {
+        if(!missing(new))
+            .store <<- new
+        else
+            .store
+    }
+})
+
 processRdIfdefs <- function(blocks, defines)
 {
     recurse <- function(block) {
@@ -469,6 +488,10 @@ prepare_Rd <-
     srcref <- attr(Rd, "srcref")
     if (is.null(Rdfile) && !is.null(srcref))
     	Rdfile <- attr(srcref, "srcfile")$filename
+    ## prepare_Rd_data_store(list(Rdfile = Rdfile))
+    ## prepare_Rd_data_store(Rdfile)
+    ## saveRDS(prepare_Rd_data_store(), file = "~/tmp/yyy2.rds")
+    ## on.exit(prepare_Rd_data_store(NULL))
     if (fragment) meta <- NULL
     else {
 	pratt <- attr(Rd, "prepared")
@@ -889,7 +912,17 @@ checkRd <- function(Rd, defines = .Platform$OS.type, stages = "render",
                "\\deqn" =,
                "\\figure" = {
                    checkContent(block[[1L]], tag)
-                   if (length(block) > 1L) checkContent(block[[2L]], tag)
+                   if(length(block) > 1L) {
+                       checkContent(block[[2L]], tag)
+                       if(length(txt <- as.character(block[[2L]])) &&
+                          startsWith(txt[1L], "options: ")) {
+                           txt <- grepv("(height|width) *= *['\"]?[[:digit:]]+%",
+                                        paste(txt, collapse = "\n"))
+                           if(length(txt))
+                               warnRd(block, Rdfile, level = -1,
+                                      "height/width attributes should be in pixels")
+                       }
+                   }
                },
                "\\tabular" = checkTabular(block),
                "\\subsection" = {
@@ -1000,32 +1033,44 @@ checkRd <- function(Rd, defines = .Platform$OS.type, stages = "render",
                    "Unrecognized \\tabular format: ", table[[1L]][[1L]])
         tags <- RdTags(content)
 
-        newrow <- TRUE
-        for (i in seq_along(tags)) {
-            if (newrow) {
-            	newrow <- FALSE
-            	col <- 0
-            	newcol <- TRUE
+        ## Remove trailing \cr as we do in Rd2HTML():
+        if(any(ind <- (tags == "\\cr"))) {
+            i <- max(which(ind))
+            j <- seq.int(i + 1L, length.out = length(content) - i)
+            if(all(grepl("^[[:space:]]*$",
+                         vapply(content[j], .Rd_deparse, "")))) {
+                content <- content[-i]
+                tags <- tags[-i]
             }
-            if (newcol) {
-                col <- col + 1
-                if (col > length(format))
-                    warnRd(table, Rdfile, level = 7,
-                           "Only ", length(format),
-                           if (length(format) == 1) " column " else " columns ",
-                           "allowed in this table")
-            	newcol <- FALSE
-            }
-            switch(tags[i],
-            "\\tab" = {
-            	newcol <- TRUE
-            },
-            "\\cr" = {
-            	newrow <- TRUE
-            },
-            checkBlock(content[[i]], tags[i], "\\tabular",
-                       content[seq_len(i-1L)]))
         }
+
+        len <- length(format)
+        chk <- function(col) {
+            if(col != len) {
+                warnRd(table, Rdfile,
+                       level = if(col > len) 7 else -2,
+                       "Only ", len,
+                       if(len == 1) " column " else " columns ",
+                       "allowed in this table",
+                       " (row ", row, " has ", col, ")")
+            }
+        }
+        col <- 1L
+        row <- 1L
+        for(i in seq_along(tags)) {
+            switch(tags[i],
+                   "\\cr" = {
+                       chk(col)
+                       row <- row + 1L
+                       col <- 1L
+                   },
+                   "\\tab" = {
+                       col <- col + 1L
+                   },
+                   checkBlock(content[[i]], tags[i], "\\tabular",
+                              content[seq_len(i-1L)]))
+        }
+        chk(col)
     }
 
     checkContent <- function(blocks, blocktag) {

@@ -237,7 +237,13 @@ topic2href <- function(x, destpkg = NULL, hooks = list())
     else {
         FUN <- hooks$pkg_href
         if (is.null(FUN)) FUN <- function(pkg) sprintf("%s.html", pkg)
-        sprintf("%s#%s", FUN(destpkg), topic2id(x))
+        ## Need a way to turn links to unavailable packages into
+        ## "nothing", e.g. when building package HTML refmans.
+        ## We do so if FUN() gave "nothing" or the special '#'.
+        if(!length(s <- FUN(destpkg)) || (s == "#"))
+            "#"
+        else
+            sprintf("%s#%s", s, topic2id(x))
     }
 }
 
@@ -276,7 +282,7 @@ tag2id <- function(tag, name = NULL, tagid = section2id[tag])
           "\\value"       = "_sec_value")
     if (anyNA(tagid)) return(NULL) # or "" ?
     id <- if (is.null(name)) tagid
-          else paste(name2id(name), tolower(tagid), sep = "_:_")
+          else paste(name2id(name), tagid, sep = "_:_")
     string2id(gsub("[[:space:]]+", "-", id))
 }
 
@@ -352,6 +358,35 @@ createRedirects <- function(file, Rdobj)
         ## redirMsg("file", basename(file), basename(file), if (file.exists(file.fallback)) "SUCCESS" else "FAILURE")
         if (!file.exists(file.fallback)) redirMsg("file", basename(file), basename(file),  "FAILURE")
     }
+}
+
+
+
+### Helper function to find a suitable package logo (logo.png, logo.svg); otherwise return R logo
+
+## For an installed package, we can use system.file(). This is what is
+## needed for dynamic help. To interpret 'package' as a source
+## directory, specify 'dir = TRUE'
+
+
+staticLogoPath <- function(package, relative = FALSE, Rhome = "../../..", dir = FALSE) {
+    ## This may be called with package="" (e.g., for standalone Rd files)
+    if (!nzchar(package)) file <- R.home("doc/html/Rlogo.svg")
+    else if (dir) {
+        file <- file.path(package, "man", "figures", "logo.png")
+        if (!file.exists(file)) file <- file.path(package, "man", "figures", "logo.svg")
+        if (!file.exists(file)) file <- R.home("doc/html/Rlogo.svg")
+    } else {
+        file <- system.file("help", "figures", "logo.png", package = package)
+        if (!nzchar(file)) file <- system.file("help", "figures", "logo.svg", package = package)
+        if (!nzchar(file)) file <- R.home("doc/html/Rlogo.svg")
+    }
+    if (relative) {
+        file <- if (endsWith(file, "/logo.png")) "figures/logo.png"
+                else if (endsWith(file, "/logo.svg")) "figures/logo.svg"
+                else file.path(Rhome, "doc/html/Rlogo.svg")
+    }
+    file
 }
 
 
@@ -488,7 +523,7 @@ Rd2HTML <-
                   "\\var"="var")
     # These have simple substitutions
     HTMLEscapes <- c("\\R"='<span class="rlang"><b>R</b></span>',
-    		     "\\cr"="<br />",
+    		     "\\cr"="<br>",
     		     "\\dots"="...",
     		     "\\ldots"="...")
     ## These correspond to idiosyncratic wrappers
@@ -807,6 +842,12 @@ Rd2HTML <-
                            if(startsWith(url, "doi:"))
                                url <- paste0("https://doi.org/",
                                              substring(url, 5L))
+                           else if(dynamic) { # use local \manual if available
+                               m <- regexec(".R-project.org/.+/(.+)\\.html", url)
+                               mname <- regmatches(url, m)[[1L]][2L]
+                               if (mname %in% utils:::R_manuals[,1L])
+                                   url <- paste0("/doc/manual/", sub(".*/", "", url))
+                           }
                            enterPara(doParas)
                            of0('<a href="', urlify(url), '">')
                            "</a>"
@@ -901,7 +942,7 @@ Rd2HTML <-
 		       writeContent(block[[length(block)]], tag)
 		       of1('"')
                    }
-                   of1(' />')
+                   of1('>')
                },
                "\\dontshow" =,
                "\\testonly" = {}, # do nothing
@@ -943,19 +984,38 @@ Rd2HTML <-
 	    conc$saveSrcref(table)
         newrow <- TRUE
         newcol <- TRUE
+        ## Argh.  As of 2025-08, about 3000 CRAN packages have \\tabular
+        ## with a trailing \cr ending the last row, which is invalid as
+        ## per R-exts (the \cr starts another row which has a different
+        ## number of fields than the other rows), and when processed
+        ## results in bad HTML (spotted by v.NU but not HTML Tidy).  We
+        ## could have checkRd() complain, but given the number of
+        ## offenders let's drop such trainling \cr before processing, at
+        ## least for the time being. 
+        if(any(ind <- (tags == "\\cr"))) {
+            i <- max(which(ind))
+            j <- seq.int(i + 1L, length.out = length(content) - i)
+            if(all(grepl("^[[:space:]]*$",
+                         vapply(content[j], .Rd_deparse, "")))) {
+                content <- content[-i]
+                tags <- tags[-i]
+            }
+        }
+        len <- length(format)
+        col <- 0L        
         for (i in seq_along(tags)) {
             if (concordance)
                 conc$saveSrcref(content[[i]])
             if (newrow) {
             	of1("<tr>\n ")
             	newrow <- FALSE
-            	col <- 0
+            	col <- 0L
             }
             if (newcol) {
                 col <- col + 1L
-                if (col > length(format))
+                if (col > len)
                     stopRd(table, Rdfile,
-                           "Only ", length(format),
+                           "Only ", len,
                            " columns allowed in this table")
             	of0('<td style="text-align: ', format[col], ';">')
             	newcol <- FALSE
@@ -966,14 +1026,16 @@ Rd2HTML <-
             	newcol <- TRUE
             },
             "\\cr" = {
-            	if (!newcol) of1('</td>')
+            	if (!newcol)
+                    of1(paste0("</td>", strrep("<td></td>", len - col)))
             	of1('\n</tr>\n')
             	newrow <- TRUE
             	newcol <- TRUE
             },
             writeBlock(content[[i]], tags[i], "\\tabular"))
         }
-        if (!newcol) of1('</td>')
+        if (!newcol)
+            of1(paste0("</td>", strrep("<td></td>", len - col)))
         if (!newrow) of1('\n</tr>\n')
         of1('\n</table>\n')
         inPara <<- FALSE
@@ -1169,6 +1231,8 @@ Rd2HTML <-
 
         of0('<nav class="topic" aria-label="Section Navigation">\n',
             '<div class="dropdown-menu">\n',
+            if (dynamic) '<img class="toplogo" src="../logo" alt="[logo]">'
+            else sprintf('<img class="toplogo" src="%s" alt="[logo]">', staticLogoPath(package, relative = TRUE)),
             '<h1>Contents</h1>\n',
             '<ul class="menu">\n')
 
@@ -1265,10 +1329,11 @@ Rd2HTML <-
         ## Create HTML header and footer
         if (standalone) {
             hfcomps <- # should we be able to specify static URLs here?
-                HTMLcomponents(title = headtitle, logo = FALSE,
+                HTMLcomponents(title = "", logo = FALSE,
                                up = NULL,
                                top = NULL,
                                css = stylesheet,
+                               headerTitle = headtitle,
                                outputEncoding = outputEncoding,
                                dynamic = dynamic, prism = enhancedHTML,
                                doTexMath = doTexMath, texmath = texmath,
@@ -1317,7 +1382,7 @@ Rd2HTML <-
 	of1('\n')
         if (standalone) {
             if(nzchar(version))
-                of0('<hr /><div style="text-align: center;">[', version,
+                of0('<hr><div style="text-align: center;">[', version,
                     if (!no_links) '<a href="00Index.html">Index</a>',
                     ']</div>')
             of1('</main>\n')
@@ -1708,7 +1773,7 @@ function(dir)
                         else
                             " src=\"https://cloud.R-project.org/web/resources/orcid.svg\" ",
                         "style=\"width:16px; height:16px; margin-left:4px; margin-right:4px; vertical-align:middle\"",
-                        " /></a>"),
+                        "></a>"),
                  desc["Author"])
         desc["Author"] <-
             gsub(sprintf("&lt;https://replace.me.by.ror.org/(%s)&gt;",
@@ -1720,7 +1785,7 @@ function(dir)
                         else
                             " src=\"https://cloud.R-project.org/web/resources/ror.svg\" ",
                         "style=\"width:20px; height:20px; margin-left:4px; margin-right:4px; vertical-align:middle\"",
-                        " /></a>"),
+                        "></a>"),
                  desc["Author"])
     }
 

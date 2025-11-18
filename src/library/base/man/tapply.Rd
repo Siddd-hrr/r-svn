@@ -88,9 +88,7 @@ tapply(X, INDEX, FUN = NULL, \dots, default = NA, simplify = TRUE)
   \code{X}.
 }
 \references{
-  Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988)
-  \emph{The New S Language}.
-  Wadsworth & Brooks/Cole.
+  \bibshow{R:Becker+Chambers+Wilks:1988}
 }
 \seealso{
   the convenience functions \code{\link{by}} and
@@ -118,7 +116,7 @@ tapply(1:n, fac, sum, default = 0) # maybe more desirable
 tapply(1:n, fac, sum, simplify = FALSE)
 tapply(1:n, fac, range)
 tapply(1:n, fac, quantile)
-tapply(1:n, fac, length) ## NA's
+tapply(1:n, fac, length) ## NAs
 tapply(1:n, fac, length, default = 0) # == table(fac)
 \dontshow{stopifnot(all.equal(
   unname(unclass(table(fac))),

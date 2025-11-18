@@ -668,10 +668,11 @@ aspell_control_R_vignettes <-
          c("-t", "-d en_US,en_GB"))
 
 aspell_R_vignettes <-
-function(program = NULL,
+function(program = NULL, dir = NULL,
          dictionaries = c(aspell_dictionaries_R, "R_vignettes"))
 {
-    files <- Sys.glob(file.path(tools:::.R_top_srcdir_from_Rd(),
+    if(is.null(dir)) dir <- tools:::.R_top_srcdir_from_Rd()    
+    files <- Sys.glob(file.path(dir,
                                 "src", "library", "*", "vignettes",
                                 "*.Rnw"))
 
@@ -1564,12 +1565,10 @@ function(dictionary, add = character())
                       "share", "dictionaries", dictionary)
     }
     txt <- paste0(dictionary, ".txt")
-    rds <- paste0(dictionary, ".rds")
     new <- unique(c(if(file.exists(txt))
                         readLines(txt, encoding = "UTF-8"),
                     enc2utf8(add)))
     new <- new[order(tolower(new), new)]
     new <- new[nzchar(new)]
     writeLines(new, txt, useBytes = TRUE)
-    saveRDS(new, rds)
 }

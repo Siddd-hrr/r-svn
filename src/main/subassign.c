@@ -156,17 +156,23 @@ static SEXP EnlargeVector(SEXP x, R_xlen_t newlen)
 	warning(_("assignment outside vector/list limits (extending from %lld to %lld)"),
 		(long long)len, (long long)newlen);
 
-    /* if the vector is not shared, is growable. and has room, then
+    /* if the vector is not shared, is growable, and has room, then
        increase its length */
     if (! MAYBE_SHARED(x) &&
 	IS_GROWABLE(x) &&
 	XTRUELENGTH(x) >= newlen) {
 	SET_STDVEC_LENGTH(x, newlen);
-	names = getNames(x);
-	if (!isNull(names)) {
-	    SEXP newnames = EnlargeNames(names, len, newlen);
-	    if (names != newnames)
-		setAttrib(x, R_NamesSymbol, newnames);
+	if (ATTRIB(x) != R_NilValue) {
+	    names = getNames(x);
+	    if (!isNull(names)) {
+		SEXP newnames = EnlargeNames(names, len, newlen);
+		if (names != newnames)
+		    setAttrib(x, R_NamesSymbol, newnames);
+	    }
+	    if (getAttrib(x, R_DimSymbol) != R_NilValue)
+		setAttrib(x, R_DimSymbol, R_NilValue);
+	    if (getAttrib(x, R_DimNamesSymbol) != R_NilValue)
+		setAttrib(x, R_DimNamesSymbol, R_NilValue);
 	}
 	return x;
     }

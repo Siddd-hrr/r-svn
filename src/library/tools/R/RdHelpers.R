@@ -1,7 +1,7 @@
 #  File src/library/tools/R/RdHelpers.R
 #  Part of the R package, https://www.R-project.org
 #
-#  Copyright (C) 2019-2023 The R Core Team
+#  Copyright (C) 2019-2025 The R Core Team
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -145,30 +145,32 @@ function(x)
             )
 }
 
-R_bibliographies_dir <- 
-function()
-    file.path(R.home("share"), "bibliographies")
-
-R_bibentries <-
-function()
+Rd_expr_manual <-
+function(name = "R-exts", node = "Top")
 {
-    bib <- readRDS(file.path(R_bibliographies_dir(), "R.rds"))
-    bib[lengths(bib$key) > 0L]
+    if (name %notin% rownames(utils:::R_manuals))
+        stop(sprintf("\\manual must refer to one of %s",
+                     paste(sQuote(rownames(utils:::R_manuals)), collapse = ", ")))
+    baseurl <- switch(name,
+                      "rw-FAQ" = "https://cloud.R-project.org/bin/windows/base/",
+                      "https://cloud.R-project.org/doc/manuals/")
+    title <- utils:::R_manuals[name,2L]
+    if (length(node) == 1L && node %in% c("", "Top"))
+        sprintf("\\href{%s%s.html}{\\cite{%s}}", baseurl, name, title)
+    else
+        sprintf("\\href{%s%s.html#%s}{\\dQuote{%s}} in \\cite{%s}",
+                baseurl, name, .texinfo_node_to_id(node), trimws(node), title)
 }
 
-update_R_bibentries <-
-function(dir = NULL)
-{
-    if(is.null(dir))
-        dir <- file.path(.R_top_srcdir_from_Rd(), 
-                         "share", "bibliographies")
-    bibfiles <- Sys.glob(file.path(dir, "*.R"))
-    bibentries <-
-        do.call(c, lapply(bibfiles,
-                          utils::readCitationFile,
-                          list(Encoding = "UTF-8")))
-    saveRDS(bibentries, file.path(dir, "R.rds"))
-}
+Rd_expr_bibshow_bibstyle <- local({
+    .bibstyle <- "R"
+    function(new) {
+        if(!missing(new))
+            .bibstyle <<- new
+        else
+            .bibstyle
+    }
+})
 
 Rd_expr_bibshow <-
 function(x)
@@ -179,19 +181,44 @@ function(x)
         Rd_expr_bibcite_keys_cited(NULL)
         return(x)
     }
-    bib <- R_bibentries()
-    ## <FIXME>
+    cited <- Rd_expr_bibcite_keys_cited()    
     ## Would be nice to have a common reader for possibly multi-line
     ## comma separated values ...
-    keys <- strsplit(x, ",[[:space:]]*")[[1L]]
-    if(any(keys == "*")) {
-        keys <- c(keys, Rd_expr_bibcite_keys_cited())
-        Rd_expr_bibcite_keys_cited(NULL)
+    given <- strsplit(x, ",[[:space:]]*")[[1L]]
+    if(any(given == "*"))
+        given <- c(given[given != "*"], cited)
+    Rd_expr_bibcite_keys_cited(setdiff(cited, given))
+    y <- sort(unique(.bibentries_from_keys(given)))
+    ## Merge bibinfo data.
+    keys <- .bibentry_get_key(y)
+    store <- Rd_expr_bibinfo_data_store()
+    for(k in intersect(keys, names(store))) {
+        entry <- store[[k]]
+        for(f in names(entry))
+            y[k, f] <- entry[[f]]
     }
-    y <- sort(unique(bib[bib$key %in% keys]))
-    paste(sprintf("\\if{html}{\u2060\\out{<span id=\"reference+%s\">}}%s\\if{html}{\\out{</span>}}",
-                  string2id(unlist(y$key, use.names = FALSE)),
-                  toRd(y)),
+    Rd_expr_bibinfo_data_store(store[setdiff(names(store), keys)])
+    ## Typically the bibinfo data would give headers or footers, but
+    ## these only get shown when printing bibenties in citation style,
+    ## so we have to add them ourselves.
+    headers <- y[, "header"]
+    headers <- unlist(ifelse(vapply(headers, is.null, NA), "", headers),
+                      use.names = FALSE)
+    if(any(ind <- nzchar(headers)))
+        headers[ind] <- paste(headers[ind], "\\cr")
+    footers <- y[, "footer"]
+    footers <- unlist(ifelse(vapply(footers, is.null, NA), "", footers),
+                      use.names = FALSE)
+    if(any(ind <- nzchar(footers)))
+        footers[ind] <- paste("\\cr", footers[ind])
+    rdfile <- processRdChunk_data_store()$Rdfile
+    rdpath <- if(length(rdfile)) basename(rdfile) else ""
+    paste(sprintf("%s\\if{html}{\\out{<span id=\"reference+%s+%s\"></span>}}%s%s",
+                  headers,
+                  rdpath,
+                  string2id(.bibentry_get_key(y)),
+                  toRd(y, style = Rd_expr_bibshow_bibstyle()),
+                  footers),
           collapse = "\n\n")
 }
 
@@ -209,34 +236,123 @@ Rd_expr_bibcite <-
 function(x, textual = FALSE)
 {
     x <- trimws(x)
-    bib <- R_bibentries()
-    keys <- strsplit(x, ",[[:space:]]*")[[1L]]
-    ## Allow b<k>a to specify before b and after a.
-    ## Could also use
-    ##   regmatches(keys, regexec("(.*<)?(.*)(>.*)?", keys))
-    before <- after <- rep_len("", length(keys))
-    if(any(ind <- grepl("<", keys))) {
-        before[ind] <- sub("<.*", "", keys[ind])
-        keys[ind] <- sub(".*<", "", keys[ind])
+    given <- strsplit(x, "(?<!\\\\),[[:space:]]*", perl = TRUE)[[1L]]
+    ## We used to extract parts based on
+    ##   parts <- strsplit(given, "|", fixed = TRUE)
+    ## but that does not work as per ?strsplit
+    ##   if there is a match at the end of the string, the output is the
+    ##   same as with the match removed.
+    ## Argh.
+    parts <- regmatches(given,
+                        gregexpr("|", given, fixed = TRUE),
+                        invert = TRUE)
+    if(!all(ind <- (lengths(parts) %in% c(1L, 3L)))) {
+        msg <- paste(c("Found the following invalid citespecs:", 
+                       .strwrap22(sQuote(given[!ind]))),
+                     collapse = "\n")
+        warning(msg, call. = FALSE)
+        parts <- parts[ind]
     }
-    if(any(ind <- grepl(">", keys))) {
-        after[ind] <- sub(".*>", "", keys[ind])
-        keys[ind] <- sub(">.*", "", keys[ind])
+    keys <- after <- before <- rep_len("", length(parts))
+    if(any(ind <- (lengths(parts) == 1L))) {
+        keys[ind] <- unlist(parts[ind], use.names = FALSE)
     }
-    ind <- keys %in% unlist(bib$key)
+    if(any(ind <- (lengths(parts) == 3L))) {
+        parts <- parts[ind]
+        keys[ind] <- vapply(parts, `[`, "", 2L)
+        after[ind] <- gsub("\\,", ",",
+                           vapply(parts, `[`, "", 3L),
+                           fixed = TRUE)
+        before[ind] <- gsub("\\,", ",",
+                            vapply(parts, `[`, "", 1L),
+                            fixed = TRUE)
+    }
+    bib <- .bibentries_from_keys(keys)
+    ind <- keys %in% .bibentry_get_key(bib)
     if(!all(ind)) {
-        ## <FIXME>
-        ## Should warn about keys not in the bibentries
-        before <- before[ind]
-        after <- after[ind]
         keys <- keys[ind]
+        after <- after[ind]
+        before <- before[ind]
+    }
+    store <- Rd_expr_bibinfo_data_store()
+    for(k in intersect(keys, names(store))) {
+        entry <- store[[k]]
+        for(f in names(entry)) bib[k, f] <- entry[[f]]
+    }
+    n <- length(keys)
+    if(n == 0L)
+        return("")
+    y <- character(n)
+    prev <- Rd_expr_bibcite_keys_cited()
+    rdfile <- processRdChunk_data_store()$Rdfile
+    rdpath <- if(length(rdfile)) basename(rdfile) else ""
+    if(textual) {
+        for(i in seq_len(n)) {
+            key <- keys[i]
+            y[i] <- utils::citeNatbib(key, bib[key], after = after[i],
+                                      previous = prev, textual = TRUE)
+            prev <- c(prev, key)
+        }
+        if(any(ind <- nzchar(before)))
+            before[ind] <- paste0(before[ind], " ")
+        y <- paste0(before,
+                    ## Empty \cite{} here is a kludge to 'enterPara' in Rd2HTML.
+                    sprintf("\\if{html}{\\cite{}\\out{<a href=\"#reference+%s+%s\" class=\"citation\">}}",
+                            rdpath,
+                            string2id(keys)),
+                    y,
+                    rep_len("\\if{html}{\\out{</a>}}", n),
+                    collapse = "; ")
+    } else {
+        bibp <- c("", "", ";", "a", "",  ",")
+        for(i in seq_len(n)) {
+            key <- keys[i]
+            y[i] <- utils::citeNatbib(key, bib[key],
+                                      previous = prev, textual = FALSE,
+                                      bibpunct = bibp)
+            prev <- c(prev, key)
+        }
+        if(any(ind <- nzchar(before)))
+            before[ind] <- paste0(before[ind], " ")
+        if(any(ind <- nzchar(after)))
+            after[ind] <- paste0(", ", after[ind])
+        y <- paste0("(",
+                    paste0(before,
+                           sprintf("\\if{html}{\\out{<a href=\"#reference+%s+%s\" class=\"citation\">}}",
+                                   rdpath,
+                                   string2id(keys)),
+                           y,
+                           rep_len("\\if{html}{\\out{</a>}}", n),
+                           after,
+                           collapse = ";"),
+                    ")")
     }
     Rd_expr_bibcite_keys_cited(keys, TRUE)
-    ## <FIXME>
-    ## This really needs a vectorized version of cite() ...
-    before <- sprintf("\\if{html}{\\out{<a href=\"#reference+%s\">}}%s",
-                      string2id(keys), before)
-    after <- sprintf("%s\\if{html}{\\out{</a>}}", after)
-    utils::cite(keys, bib, textual, before, after)
+    y
+}
+
+Rd_expr_bibinfo_data_store <- local({
+    .store <- NULL
+    function(new, add = FALSE) {
+        if(!missing(new)) {
+            if(add) {
+                key <- new[[1L]]
+                val <- `names<-`(list(new[[3L]]), new[[2L]])
+                .store[[key]] <<- c(.store[[key]], val)
+            } else
+                .store <<- new
+        }
+        else
+            .store
+    }
+})
+
+Rd_expr_bibinfo <-
+function(key, field, value)
+{
+    Rd_expr_bibinfo_data_store(list(trimws(key),
+                                    trimws(field),
+                                    trimws(value)),
+                               add = TRUE)
 }
 

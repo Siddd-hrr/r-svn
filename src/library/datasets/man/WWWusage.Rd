@@ -1,6 +1,6 @@
 % File src/library/datasets/man/WWWusage.Rd
 % Part of the R package, https://www.R-project.org
-% Copyright 1995-2007 R Core Team
+% Copyright 1995-2025 R Core Team
 % Distributed under GPL 2 or later
 
 \name{WWWusage}
@@ -16,15 +16,10 @@
   A time series of length 100.
 }
 \source{
-  Durbin, J. and Koopman, S. J. (2001).
-  \emph{Time Series Analysis by State Space Methods}.
-  Oxford University Press.
-  %% \url{http://www.ssfpack.com/dkbook/}
+  \bibshow{R:Durbin+Koopman:2001}
 }
 \references{
-  Makridakis, S., Wheelwright, S. C. and Hyndman, R. J. (1998).
-  \emph{Forecasting: Methods and Applications}.
-  Wiley.
+  \bibshow{R:Makridakis+Wheelwright+Hyndman:1997}
 }
 \examples{
 require(graphics)

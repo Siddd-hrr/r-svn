@@ -74,13 +74,9 @@ rlnorm(n, meanlog = 0, sdlog = 1)
   is \code{-plnorm(t, r, lower = FALSE, log = TRUE)}.
 }
 \references{
-  Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988)
-  \emph{The New S Language}.
-  Wadsworth & Brooks/Cole.
-
-  Johnson, N. L., Kotz, S. and Balakrishnan, N. (1995)
-  \emph{Continuous Univariate Distributions}, volume 1, chapter 14.
-  Wiley, New York.
+  \bibinfo{R:Johnson+Kotz+Balakrishnan:1994}{footer}{Chapter 14.}  
+  \bibshow{R:Becker+Chambers+Wilks:1988,
+    R:Johnson+Kotz+Balakrishnan:1994}
 }
 \seealso{
   \link{Distributions} for other standard distributions, including
